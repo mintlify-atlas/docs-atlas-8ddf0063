@@ -1,0 +1,82 @@
+{
+  "projectType": "general",
+  "projectName": "Coyprot — Analizador de Llamadas Pro",
+  "projectDescription": "Herramienta de escritorio para el análisis forense de registros de detalle de llamadas (CDR), geolocalización de celdas telefónicas y generación de informes HTML interactivos.",
+  "theme": "almond",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentación",
+        "groups": [
+          {
+            "group": "Introducción",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Instalación",
+            "pages": ["installation/requirements", "installation/setup", "installation/cell-database"]
+          },
+          {
+            "group": "Guía de Uso",
+            "pages": [
+              "guides/loading-data",
+              "guides/column-mapping",
+              "guides/attachments",
+              "guides/enriching-data",
+              "guides/generating-report"
+            ]
+          },
+          {
+            "group": "Funcionalidades",
+            "pages": [
+              "features/data-processing",
+              "features/geocoding",
+              "features/maps",
+              "features/charts",
+              "features/ftp-upload"
+            ]
+          },
+          {
+            "group": "Referencia",
+            "pages": [
+              "reference/project-structure",
+              "reference/modules",
+              "reference/configuration"
+            ]
+          },
+          {
+            "group": "Soporte",
+            "pages": ["faq", "troubleshooting"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Procesamiento de sábanas de llamadas Excel/CSV con mapeo inteligente de columnas",
+    "Normalización automática de números telefónicos (prefijos, duplicados)",
+    "Geocodificación multinivel: GPS nativo, base de datos de celdas y inferencia por municipio",
+    "Generación de mapas interactivos: clusters, rutas cronológicas y mapa de calor (Folium)",
+    "Dashboard con gráficos estadísticos animados (tendencias horarias, Top 10, ubicaciones)",
+    "Gestión y visualización de documentos PDF adjuntos (Financiero, Judicial, etc.)",
+    "Exportación de informes HTML portables (auto-contenidos)",
+    "Subida automática por FTP con generación de enlace web compartible",
+    "Interfaz gráfica de escritorio (Tkinter) y modo línea de comandos (CLI)"
+  ],
+  "publicApiSurface": [
+    "src/gui.py — Interfaz gráfica principal (Tkinter/ThemedTk)",
+    "src/main.py — Punto de entrada CLI",
+    "src/excel_utils.py — cargar_excel_crudo(), procesar_dataframe_con_mapeo()",
+    "src/phone_utils.py — Normalización de números telefónicos",
+    "src/geo_utils.py — generar_mapa_agrupado(), generar_mapa_rutas(), generar_mapa_calor()",
+    "src/graphics_utils.py — generar_grafico_top_llamadas(), generar_grafico_horario_llamadas(), generar_grafico_top_ubicacion()",
+    "src/report_generator.py — generar_informe_html(), generar_datos_llamadas_json()",
+    "src/cell_geocoder.py — CellGeocoder (búsqueda en base de datos de antenas)",
+    "src/colombia_data.py — obtener_ubicacion_completa() (inferencia por municipio)",
+    "src/ftp_utils.py — subir_archivo_ftp()",
+    "src/column_mapper.py — ColumnMapperDialog (asistente UI de mapeo)"
+  ]
+}
