@@ -1,0 +1,206 @@
+---
+title: "Instalación y configuración"
+description: "Guía paso a paso para clonar el repositorio, crear el entorno virtual, instalar dependencias y verificar la instalación."
+---
+
+## Requisitos previos
+
+Antes de empezar, verifica que tienes Python 3.9 o superior instalado:
+
+```bash
+python --version
+```
+
+Consulta la página de [Requisitos del sistema](/installation/requirements) si necesitas instalar Python o dependencias del sistema operativo.
+
+---
+
+## Instalación
+
+<Steps>
+  <Step title="Clonar el repositorio">
+    Descarga el código fuente con git:
+
+    ```bash
+    git clone https://github.com/coyprot/coyprot_analisis_sabanas.git
+    cd coyprot_analisis_sabanas
+    ```
+  </Step>
+
+  <Step title="Crear el entorno virtual">
+    Un entorno virtual aísla las dependencias del proyecto del resto del sistema. Esto evita conflictos con otras instalaciones de Python.
+
+    <Tabs>
+      <Tab title="Windows">
+        ```bat
+        python -m venv venv
+        venv\Scripts\activate
+        ```
+      </Tab>
+      <Tab title="macOS / Linux">
+        ```bash
+        python3 -m venv venv
+        source venv/bin/activate
+        ```
+      </Tab>
+    </Tabs>
+
+    El prompt del terminal mostrará el prefijo `(venv)` cuando el entorno esté activo.
+  </Step>
+
+  <Step title="Instalar las dependencias">
+    Con el entorno virtual activo, instala todas las librerías:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    Verifica que la instalación fue exitosa:
+
+    ```bash
+    pip list
+    ```
+
+    Deberías ver `pandas`, `folium`, `jinja2`, `ttkthemes` y el resto de paquetes en la lista.
+  </Step>
+
+  <Step title="Configurar las variables de entorno">
+    Copia el archivo de ejemplo y ajusta los valores según tu entorno:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Edita `.env` con cualquier editor de texto:
+
+    ```ini
+    # Credenciales FTP (requeridas solo si usas subida automática)
+    FTP_HOST=tu_dominio.com
+    FTP_USER=tu_usuario_ftp
+    FTP_PASS=tu_contraseña_ftp
+    FTP_PUBLIC_HTML=public_html
+
+    # Nivel de logs: DEBUG, INFO, WARNING, ERROR
+    LOG_LEVEL=INFO
+
+    # Radio máximo en km para asignar municipio más cercano (geocodificación Plan C)
+    GEO_PROXIMITY_KM=50
+    ```
+
+    <Warning>
+      Nunca subas el archivo `.env` al repositorio. Contiene credenciales sensibles. El archivo `.gitignore` ya lo excluye por defecto.
+    </Warning>
+  </Step>
+
+  <Step title="Verificar la instalación">
+    Lanza la interfaz gráfica para confirmar que todo funciona:
+
+    ```bash
+    python run.py
+    ```
+
+    Si la ventana se abre sin errores, la instalación es correcta. El panel de logs en la parte inferior mostrará:
+
+    ```
+    HH:MM:SS - INFO - Interfaz lista. Esperando datos...
+    ```
+
+    Si el archivo `static/db/celdas.csv` está presente, también verás:
+
+    ```
+    HH:MM:SS - INFO - Cargando base de datos de celdas desde: celdas.csv
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Estructura del proyecto
+
+Esta es la organización de directorios del repositorio:
+
+```
+coyprot_analisis_sabanas/
+│
+├── run.py                   # Punto de entrada principal (lanza la GUI)
+├── requirements.txt         # Dependencias Python
+├── .env.example             # Plantilla de variables de entorno
+├── .env                     # Variables de entorno locales (no versionar)
+│
+├── src/                     # Código fuente
+│   ├── ui/
+│   │   └── app.py           # Interfaz gráfica principal (Tkinter + ThemedTk)
+│   ├── data/
+│   │   └── loaders/
+│   │       └── excel_loader.py
+│   ├── reports/
+│   │   └── report_generator.py
+│   ├── services/
+│   │   ├── geocoding_service.py
+│   │   ├── data_processing_service.py
+│   │   └── phone_service.py
+│   ├── config/
+│   │   └── settings.py      # Configuración centralizada desde .env
+│   ├── cell_geocoder.py     # Geolocalización por base de datos de celdas
+│   ├── colombia_data.py     # Inferencia de coordenadas por municipio
+│   ├── excel_utils.py       # Lectura y limpieza de Excel/CSV
+│   ├── phone_utils.py       # Normalización de números telefónicos
+│   ├── geo_utils.py         # Generación de mapas Folium
+│   ├── graphics_utils.py    # Gráficos Matplotlib/Seaborn
+│   ├── report_generator.py  # Orquestador del informe HTML
+│   ├── ftp_utils.py         # Cliente FTP
+│   └── utils.py             # Logging y utilidades generales
+│
+├── static/
+│   ├── assets_img/          # Logotipos e iconos (logo.png, info.png)
+│   ├── assets_js/           # Scripts JS del informe (charts, maps)
+│   └── db/
+│       ├── celdas.csv       # Base de datos de antenas (Plan B)
+│       └── municipios_colombia.csv  # Centroides municipales (Plan C)
+│
+├── templates/
+│   └── report_template.html # Plantilla Jinja2 del informe
+│
+├── output/                  # Informes generados (se crea automáticamente)
+└── logs/
+    └── app.log              # Registro de actividad
+```
+
+---
+
+## Modos de ejecución
+
+<AccordionGroup>
+  <Accordion title="Interfaz gráfica (recomendado)">
+    Lanza la ventana completa con todos los controles visuales:
+
+    ```bash
+    python run.py
+    ```
+
+    `run.py` agrega `src/` al `sys.path` automáticamente antes de importar `ui.app.CallAnalyzerApp`, lo que garantiza que los imports relativos funcionen correctamente tanto en desarrollo como con PyInstaller.
+  </Accordion>
+
+  <Accordion title="Punto de entrada alternativo (src/main.py)">
+    Para ejecutar directamente desde la carpeta `src/`:
+
+    ```bash
+    python src/main.py
+    ```
+
+    Este módulo realiza la misma inicialización de `sys.path` que `run.py` y lanza la misma clase `CallAnalyzerApp`.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Logs de actividad
+
+Todos los eventos se registran en `logs/app.log`. El nivel de detalle se controla con la variable `LOG_LEVEL` en el archivo `.env`:
+
+| Nivel | Descripción |
+|-------|-------------|
+| `DEBUG` | Muestra todos los eventos internos, útil para depuración |
+| `INFO` | Eventos normales de operación (por defecto) |
+| `WARNING` | Situaciones inesperadas que no impiden el funcionamiento |
+| `ERROR` | Errores que impiden completar una operación |

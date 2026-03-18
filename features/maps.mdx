@@ -1,0 +1,221 @@
+---
+title: "Mapas interactivos"
+description: "Tres tipos de mapas interactivos generados con Folium y Plotly que visualizan la actividad telefónica y el recorrido de datos de internet."
+---
+
+El sistema genera hasta tres mapas HTML interactivos por informe, cada uno enfocado en un tipo diferente de análisis. Los mapas de llamadas usan **Folium** (basado en Leaflet.js), mientras que el mapa de recorrido de datos usa **Plotly** con animación de timeline.
+
+<CardGroup cols={3}>
+  <Card title="Mapa de Clusters" icon="map-marker">
+    Agrupa marcadores por proximidad geográfica. Muestra llamadas entrantes, salientes y datos diferenciados por color.
+  </Card>
+  <Card title="Recorrido Cronológico" icon="route">
+    Mapa animado exclusivo para tráfico de datos internet. Muestra la secuencia temporal de antenas visitadas.
+  </Card>
+  <Card title="Mapa de Calor" icon="fire">
+    Visualiza densidad geográfica de actividad. Las zonas de mayor intensidad aparecen en color más cálido.
+  </Card>
+</CardGroup>
+
+---
+
+## Mapa de Clusters
+
+Generado por `generar_mapa_agrupado` en `geo_utils.py`. Usa el plugin `MarkerCluster` de Folium para agrupar marcadores cercanos automáticamente al hacer zoom.
+
+```python
+def generar_mapa_agrupado(df, output_path, nombres_asignados=None):
+    center = [df_clean["latitud_n"].mean(), df_clean["longitud_w"].mean()]
+    mapa = folium.Map(location=center, zoom_start=11, tiles="OpenStreetMap")
+
+    cluster_entrantes = MarkerCluster(name="📥 Entrantes (Azul)").add_to(mapa)
+    cluster_salientes = MarkerCluster(name="📤 Salientes (Verde)").add_to(mapa)
+    cluster_datos     = MarkerCluster(name="📡 Datos (Morado)").add_to(mapa)
+```
+
+### Diferenciación visual por tipo de registro
+
+Cada registro recibe un color e icono Font Awesome según su `tipo_llamada`:
+
+| Tipo | Color del marcador | Icono | Grupo |
+|---|---|---|---|
+| `entrante` | Azul | `arrow-down` | `cluster_entrantes` |
+| `saliente` | Verde | `arrow-up` | `cluster_salientes` |
+| `dato` / `datos` | Morado | `globe` | `cluster_datos` |
+
+### Contenido del popup
+
+Al hacer clic en un marcador, el popup muestra:
+
+- **Llamadas:** número del interlocutor y alias asignado (si existe)
+- **Datos:** nombre de la celda (`nombre_celda`) o ID decimal (`cell_identity_decimal`)
+- Fecha y hora del evento
+- Tipo de llamada
+
+```python
+alias = nombres_asignados.get(str(row.get("originador", "")), "") if nombres_asignados else ""
+label = f"{num} ({alias})" if alias else num
+popup = f"<b>{label}</b><br>{row['fecha_hora']}<br>{tipo}"
+folium.Marker(
+    [lat, lon],
+    popup=popup,
+    icon=folium.Icon(color=color, icon=icon, prefix="fa")
+).add_to(grp)
+```
+
+### Control de capas
+
+El mapa incluye un `LayerControl` que permite activar y desactivar cada grupo de marcadores de forma independiente desde la interfaz del mapa. El CSS personalizado asegura que el panel de capas sea desplazable cuando tiene muchas entradas:
+
+```python
+CSS_LAYER_CONTROL_FIX = """
+<style>
+    .leaflet-control-layers-list {
+        max-height: 400px !important;
+        overflow-y: auto !important;
+    }
+</style>
+"""
+```
+
+---
+
+## Recorrido Cronológico (Solo Datos)
+
+Generado por `generar_mapa_rutas` en `geo_utils.py`. A diferencia de los otros mapas, este usa **Plotly Express** con `animation_frame` para crear un slider temporal. Se genera **únicamente** con registros de tipo `DATOS` — nunca con llamadas.
+
+```python
+fig = px.scatter_mapbox(
+    df_clean,
+    lat="latitud_n",
+    lon="longitud_w",
+    color_discrete_sequence=["#FF0000"],
+    animation_frame="Tiempo_Str",  # Slider por timestamp formateado
+    zoom=12,
+    height=900
+)
+```
+
+### Preparación de datos
+
+Antes de renderizar, el DataFrame se ordena cronológicamente y se crean columnas auxiliares para el slider y los tooltips:
+
+```python
+df_clean = df_clean.sort_values(by="fecha_hora")
+df_clean["Tiempo_Str"] = df_clean["fecha_hora"].dt.strftime('%Y-%m-%d %H:%M:%S')
+df_clean["Fecha_Str"]  = df_clean["fecha_hora"].dt.strftime('%Y-%m-%d')
+df_clean["Hora_Str"]   = df_clean["fecha_hora"].dt.strftime('%H:%M:%S')
+```
+
+La etiqueta principal del tooltip sigue esta jerarquía de preferencia:
+
+```python
+def get_main_label(row):
+    if nom and len(nom) > 1:  return f"Antena: {nom}"  # Nombre de celda preferido
+    if cid and len(cid) > 0:  return f"Celda: {cid}"   # ID decimal como alternativa
+    return "Ubicación de Datos"                         # Fallback genérico
+```
+
+### Tooltip estilo Card
+
+El tooltip personalizado muestra un panel HTML moderno con borde lateral rojo:
+
+```
+╔════════════════════════════╗
+║ 📡 Antena: ANT.MEDELLIN-2  ║
+║ 🆔 ID: 12345678             ║
+║ 📅 Fecha: 2025-10-08        ║
+║ 🕐 Hora: 14:32:51           ║
+║ 📍 Latitud: 6.251234        ║
+║ 🧭 Longitud: -75.563421     ║
+╚════════════════════════════╝
+```
+
+### Controles de reproducción
+
+El mapa incluye botones ▶ (Play) y ⏸ (Pausa) sin autoplay, más un slider centrado con la fecha y hora resaltada en rojo:
+
+```python
+buttons=[
+    dict(label="▶", method="animate",
+         args=[None, dict(frame=dict(duration=800, redraw=True), fromcurrent=True)]),
+    dict(label="⏸", method="animate",
+         args=[[None], dict(mode="immediate", frame=dict(duration=0, redraw=False))])
+]
+```
+
+<Tip>
+  El mapa de recorrido solo se genera si el DataFrame de datos (`df_datos`) no está vacío. Si el archivo CDR no tiene hojas de tipo DATOS, esta pestaña no aparecerá en el informe HTML.
+</Tip>
+
+---
+
+## Mapa de Calor
+
+Generado por `generar_mapa_calor` en `geo_utils.py`. Usa el plugin `HeatMap` de Folium para visualizar la densidad de actividad por zona geográfica.
+
+```python
+def generar_mapa_calor(df, output_path):
+    mapa = folium.Map(location=center, zoom_start=11, tiles="OpenStreetMap")
+    heat_data = [[row["latitud_n"], row["longitud_w"]] for _, row in df_clean.iterrows()]
+    HeatMap(heat_data, radius=15, blur=20).add_to(mapa)
+    mapa.save(output_path)
+```
+
+Parámetros del HeatMap:
+
+| Parámetro | Valor | Efecto |
+|---|---|---|
+| `radius` | `15` | Radio de influencia de cada punto en píxeles |
+| `blur` | `20` | Difuminado del gradiente de calor |
+
+El mapa de calor se genera **solo con llamadas** (`df_llamadas`), excluyendo los datos de internet, para que la densidad refleje actividad telefónica real.
+
+---
+
+## Validación de coordenadas
+
+Todos los mapas pasan por `_limpiar_coordenadas` antes de renderizar. Esta función es el guardián común de todos los generadores de mapa:
+
+```python
+def _limpiar_coordenadas(df):
+    required = ["latitud_n", "longitud_w"]
+    if not all(col in df.columns for col in required):
+        return pd.DataFrame()  # Retorna vacío si faltan columnas
+
+    df_clean = df.dropna(subset=required).copy()
+    df_clean["latitud_n"]  = pd.to_numeric(df_clean["latitud_n"],  errors='coerce')
+    df_clean["longitud_w"] = pd.to_numeric(df_clean["longitud_w"], errors='coerce')
+    df_clean.dropna(subset=required, inplace=True)
+
+    # Filtro de rango mundial (no Colombia-específico, para permitir roaming)
+    df_clean = df_clean[
+        (df_clean["latitud_n"]  >= -90)  & (df_clean["latitud_n"]  <= 90) &
+        (df_clean["longitud_w"] >= -180) & (df_clean["longitud_w"] <= 180)
+    ]
+    return df_clean
+```
+
+Si el DataFrame resultante está vacío, la función de mapa retorna inmediatamente sin generar el archivo HTML.
+
+---
+
+## Integración en el informe HTML
+
+Los tres mapas se integran en el informe final como pestañas (`tabs`) dentro de un `<iframe>`. La estructura de archivos generada es:
+
+```
+output/<nombre_informe>/
+├── maps/
+│   ├── mapa_agrupado.html    ← Mapa de Clusters (Folium)
+│   ├── mapa_calor.html       ← Mapa de Calor (Folium)
+│   └── mapa_recorrido.html   ← Recorrido Cronológico (Plotly)
+└── reports/
+    └── informe_llamadas.html ← Informe principal con iframes
+```
+
+El informe principal referencia los mapas con rutas relativas (`../maps/mapa_agrupado.html`). Esto permite que el paquete completo funcione offline o al subirse por FTP sin dependencias externas.
+
+<Note>
+  El mapa de clusters y el de calor usan `OpenStreetMap` como mapa base. Este mapa base se carga desde internet; si el informe se visualiza sin conexión, el fondo del mapa aparecerá en blanco, pero los marcadores y la capa de calor seguirán siendo visibles.
+</Note>

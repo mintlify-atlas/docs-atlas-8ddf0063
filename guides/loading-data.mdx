@@ -1,0 +1,112 @@
+---
+title: "Cargar una sábana de llamadas"
+description: "Cómo seleccionar y cargar un archivo Excel o CSV de registros CDR en el Analizador de Llamadas Pro."
+---
+
+El primer paso en cualquier análisis forense es cargar la sábana de llamadas (CDR). La aplicación acepta archivos de Excel y CSV, los limpia automáticamente y muestra un diagnóstico detallado una vez completada la carga.
+
+## Formatos soportados
+
+<CardGroup cols={3}>
+  <Card title=".xlsx" icon="file-spreadsheet">
+    Formato Excel moderno. Soporta múltiples hojas (Entrantes, Salientes, Datos).
+  </Card>
+  <Card title=".xls" icon="file-spreadsheet">
+    Formato Excel heredado. Compatible con versiones anteriores de Microsoft Office.
+  </Card>
+  <Card title=".csv" icon="file-text">
+    Archivo de valores separados por comas. Se carga como hoja única genérica.
+  </Card>
+</CardGroup>
+
+## Proceso de carga
+
+<Steps>
+  <Step title="Seleccionar el archivo">
+    En la sección **📂 Archivo Principal**, haz clic en el botón **Seleccionar Archivo**. Se abrirá el explorador del sistema operativo filtrado para mostrar únicamente archivos `.xlsx`, `.xls` y `.csv`.
+  </Step>
+  <Step title="Análisis automático de hojas">
+    El sistema detecta automáticamente las hojas del Excel según su nombre:
+
+    - Hojas con `entrant` o `incoming` en el nombre → tipo `entrante`
+    - Hojas con `salient` o `outgoing` en el nombre → tipo `saliente`
+    - Hojas con `dato` en el nombre → registros de datos de internet
+    - Si no se detecta ninguna de las anteriores, se lee la primera hoja como genérica
+
+    El semáforo de estado cambia a **amarillo** ("Analizando Archivo...") durante este proceso.
+  </Step>
+  <Step title="Mapeo de columnas">
+    Inmediatamente después de leer el archivo, aparece el diálogo **🔗 Mapeo de Columnas**. Este asistente permite relacionar las columnas del Excel con los campos internos del sistema.
+
+    Consulta la guía [Mapeo de columnas](/guides/column-mapping) para más detalles.
+  </Step>
+  <Step title="Limpieza y normalización">
+    Una vez confirmado el mapeo, el sistema ejecuta una limpieza profunda en segundo plano:
+
+    - Normalización de números telefónicos colombianos (elimina prefijos `57`, `009`, espacios)
+    - Análisis de fechas con motor robusto (formatos serial de Excel, texto variado)
+    - Eliminación de filas con fechas inválidas
+    - Corrección de coordenadas GPS mal formateadas (coma por punto, valores fuera de rango)
+  </Step>
+  <Step title="Diagnóstico de carga">
+    Al finalizar, el panel **📋 Registro de Actividad** muestra un reporte de diagnóstico completo y aparece una ventana con el resumen:
+
+    ```
+    📊 Total Registros: N
+    📥 Entrantes: N
+    📤 Salientes: N
+    📡 Datos Internet: N
+    ```
+
+    El semáforo cambia a **verde** ("Datos Listos") si la carga fue exitosa, o a **rojo** ("Error de Carga") si ocurrió un problema.
+  </Step>
+  <Step title="Geolocalización (opcional)">
+    Si el archivo contiene nombres de celdas pero no coordenadas GPS directas, el sistema intentará geocodificar usando la base de datos `celdas.csv`. Si aún faltan coordenadas, aparecerá un diálogo preguntando si deseas inferir ubicaciones a partir del nombre del municipio presente en el nombre técnico de la celda (ej: `ANT.BARBOSA-2_R1` → Barbosa).
+  </Step>
+</Steps>
+
+## Estructura esperada del Excel
+
+Un archivo Excel óptimo contiene hojas separadas por tipo de tráfico:
+
+```
+MiSabana.xlsx
+├── Entrantes   ← llamadas recibidas
+├── Salientes   ← llamadas realizadas
+└── Datos       ← tráfico de datos/internet (con coordenadas GPS)
+```
+
+<Note>
+  Si el Excel no tiene hojas con esos nombres exactos, el sistema leerá la primera hoja disponible y asignará el tipo `desconocido`. Asegúrate de asignar correctamente el campo **Fecha y Hora** en el mapeo de columnas.
+</Note>
+
+## Formatos de fecha soportados
+
+El motor de fechas reconoce automáticamente los siguientes formatos:
+
+| Formato | Ejemplo |
+|---|---|
+| `YYYY/MM/DD HH:MM:SS` | `2025/10/08 12:04:47` |
+| `YYYY/MM/DD HH:MM` | `2025/10/08 12:04` |
+| `DD/MM/YYYY HH:MM:SS` | `08/10/2025 12:04:47` |
+| `DD-MM-YYYY HH:MM:SS` | `08-10-2025 12:04:47` |
+| `YYYY-MM-DD HH:MM:SS` | `2025-10-08 12:04:47` |
+| Serial numérico de Excel | `45573` |
+
+<Warning>
+  Las filas cuya fecha no pueda ser interpretada por ninguno de los formatos anteriores serán **descartadas** del análisis. El número de filas descartadas se muestra en el registro de actividad bajo el mensaje "Filas Descartadas (Error fecha/número)".
+</Warning>
+
+## Consideraciones para archivos grandes
+
+<AccordionGroup>
+  <Accordion title="Rendimiento con muchas filas">
+    La limpieza y normalización se ejecutan en un hilo de fondo para no bloquear la interfaz. Para archivos con más de 50.000 registros, el proceso puede tardar varios segundos. Durante ese tiempo, los botones de la interfaz permanecen deshabilitados.
+  </Accordion>
+  <Accordion title="Archivos CSV">
+    Los archivos CSV se leen en su totalidad como una sola hoja genérica. No existe detección automática de hojas de entrantes/salientes. El campo `tipo_llamada` quedará como `desconocido` a menos que el CSV incluya esa columna y se mapee correctamente.
+  </Accordion>
+  <Accordion title="Codificación de caracteres">
+    El sistema lee todos los datos como texto (`dtype=str`) antes de procesarlos, lo que evita problemas de codificación en la mayoría de los casos. Si un CSV contiene caracteres especiales y no se lee correctamente, conviértelo primero a `.xlsx` desde Excel.
+  </Accordion>
+</AccordionGroup>

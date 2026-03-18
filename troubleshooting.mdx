@@ -1,0 +1,236 @@
+---
+title: "Solución de problemas"
+description: "Errores comunes y sus soluciones al usar el Analizador de Llamadas Pro."
+---
+
+<AccordionGroup>
+
+  <Accordion title="Error de importación: módulo no encontrado">
+    **Síntoma:**
+
+    ```text
+    ModuleNotFoundError: No module named 'folium'
+    ModuleNotFoundError: No module named 'ttkthemes'
+    ```
+
+    **Causa:** Las dependencias de Python no están instaladas en el entorno activo.
+
+    **Solución:**
+
+    <Steps>
+      <Step title="Verifica que el entorno virtual esté activo">
+        ```bash
+        # Windows
+        venv\Scripts\activate
+
+        # macOS / Linux
+        source venv/bin/activate
+        ```
+      </Step>
+      <Step title="Instala todas las dependencias">
+        ```bash
+        pip install -r requirements.txt
+        ```
+      </Step>
+      <Step title="Verifica la instalación">
+        ```bash
+        pip show folium ttkthemes phonenumbers
+        ```
+      </Step>
+    </Steps>
+
+    Si el error persiste tras instalar, verifica que estás ejecutando el comando `python` del entorno virtual y no el Python del sistema:
+
+    ```bash
+    which python   # macOS/Linux
+    where python   # Windows
+    ```
+  </Accordion>
+
+  <Accordion title="El archivo Excel no se carga o aparece vacío">
+    **Síntoma:** La aplicación no muestra datos después de seleccionar el archivo, o aparece un error en el panel de logs.
+
+    **Causas posibles y soluciones:**
+
+    **1. El archivo está abierto en Excel**
+
+    Cierra el archivo en Excel antes de cargarlo. `openpyxl` no puede leer archivos con bloqueo de escritura activo.
+
+    **2. El archivo está en formato `.csv` con codificación incorrecta**
+
+    La función `cargar_excel_crudo()` lee Excel con `pd.read_excel()`. Para CSV, asegúrate de que el archivo use UTF-8 o latin-1. Si el archivo usa otro encoding, conviértelo primero:
+
+    ```bash
+    iconv -f windows-1252 -t utf-8 sabana_original.csv > sabana_utf8.csv
+    ```
+
+    **3. Las hojas no tienen nombres reconocibles**
+
+    El sistema busca hojas que contengan `entrant`, `incoming`, `salient`, `outgoing` o `dato` en su nombre. Si tus hojas tienen nombres diferentes (ej: `Hoja1`, `Llamadas`), el sistema lee la primera hoja como genérica y asigna tipo `desconocido`. Renombra las hojas en Excel, o usa el asistente de mapeo de columnas para asignar el campo `tipo_llamada`.
+
+    **4. Todas las fechas resultan inválidas**
+
+    Si el log muestra `❌ Error: Todas las fechas fueron inválidas`, el formato de fecha de tu archivo no está entre los soportados. Los formatos aceptados son:
+
+    ```text
+    %Y/%m/%d %H:%M:%S    → 2025/10/08 12:04:47
+    %Y/%m/%d %H:%M       → 2025/10/08 12:04
+    %d/%m/%Y %H:%M:%S    → 08/10/2025 12:04:47
+    %d-%m-%Y %H:%M:%S    → 08-10-2025 12:04:47
+    %Y-%m-%d %H:%M:%S    → 2025-10-08 12:04:47
+    %Y%m%d %H%M%S        → 20251008 120447
+    Formato serial Excel  → número decimal entre 32874 y 51138
+    ```
+  </Accordion>
+
+  <Accordion title="Los mapas no se generan">
+    **Síntoma:** El informe HTML se genera pero las pestañas de mapa están vacías, o aparece el mensaje `⚠️ No hay coordenadas para generar mapas`.
+
+    **Causa:** El DataFrame no contiene valores válidos en las columnas `latitud_n` y `longitud_w`.
+
+    **Diagnóstico:** Revisa el panel de logs buscando mensajes como:
+
+    ```text
+    ⚠️ Geocoder: No se encontró la base de datos en static/db/celdas.csv
+    📍 Geocodificación por celdas: 0 registros ubicados.
+    ```
+
+    **Soluciones según el caso:**
+
+    | Situación | Solución |
+    |---|---|
+    | El archivo no tiene columnas de latitud/longitud | Coloca `celdas.csv` en `static/db/` para activar el Plan B |
+    | `celdas.csv` existe pero no ubica ningún registro | Verifica que los nombres de celda del Excel coincidan (sin sufijos técnicos) con los de `celdas.csv` |
+    | No tienes `celdas.csv` | El sistema ofrecerá inferencia por municipio (Plan C) si los nombres de celda contienen nombres de municipios colombianos |
+    | Coordenadas con comas en vez de puntos | El sistema corrige esto automáticamente (`4,71` → `4.71`) |
+    | Coordenadas en escala incorrecta | El sistema corrige errores de escala (ej: `7375060` → `7.375060`) |
+
+    <Note>
+      El mapa de recorrido (`mapa_recorrido.html`) solo se genera si hay registros de tipo `DATOS`. Si tu archivo solo tiene llamadas de voz, este mapa no aparecerá aunque existan coordenadas.
+    </Note>
+  </Accordion>
+
+  <Accordion title="La subida FTP falla">
+    **Síntoma:** El log muestra `❌ Error al subir al FTP` o la barra de progreso se detiene sin completar.
+
+    **Verificaciones:**
+
+    <Steps>
+      <Step title="Verifica las credenciales en .env">
+        Asegúrate de que el archivo `.env` exista en la raíz del proyecto y contenga los valores correctos:
+
+        ```bash
+        FTP_HOST=tu_dominio.com
+        FTP_USER=tu_usuario_ftp
+        FTP_PASS=tu_contraseña_ftp
+        FTP_PUBLIC_HTML=public_html
+        ```
+      </Step>
+      <Step title="Prueba la conexión FTP manualmente">
+        Desde la terminal, verifica que puedes conectarte al servidor:
+
+        ```bash
+        ftp tu_dominio.com
+        ```
+
+        Si la conexión falla, el problema es de red o de servidor, no de la aplicación.
+      </Step>
+      <Step title="Verifica que el directorio public_html exista">
+        La función `subir_archivo_ftp()` navega automáticamente a `public_html/` antes de subir. Si tu servidor usa un nombre diferente (ej: `www/`, `htdocs/`), actualiza la variable `FTP_PUBLIC_HTML` en `.env`.
+      </Step>
+      <Step title="Revisa los permisos de escritura">
+        El usuario FTP debe tener permisos de escritura en el directorio remoto. Contacta a tu proveedor de hosting si recibes errores de permiso.
+      </Step>
+    </Steps>
+
+    <Warning>
+      La aplicación usa `FTP_TLS` (FTPS implícito en el puerto 21). Si tu servidor solo soporta FTP puro o SFTP, la conexión fallará. Verifica con tu proveedor qué protocolo está disponible.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="El asistente de mapeo no reconoce mis columnas">
+    **Síntoma:** El diálogo de mapeo de columnas aparece pero la lista desplegable no muestra las columnas correctas, o las opciones no corresponden al archivo cargado.
+
+    **Causas posibles:**
+
+    **1. Columnas con nombres que incluyen caracteres especiales o espacios al inicio/final**
+
+    La función `cargar_excel_crudo()` normaliza los nombres de columna a minúsculas sin espacios iniciales/finales. Si el log muestra nombres extraños, verifica el archivo en Excel directamente.
+
+    **2. La primera fila no es la cabecera**
+
+    Si el archivo tiene filas de título o logotipo antes de la cabecera real, `pd.read_excel()` las interpreta como datos. Elimina esas filas en Excel antes de cargar el archivo.
+
+    **3. El archivo tiene columnas duplicadas**
+
+    `procesar_dataframe_con_mapeo()` elimina automáticamente columnas duplicadas mediante `df.loc[:, ~df.columns.duplicated()]`. Si aun así hay problemas, renombra las columnas en Excel para que sean únicas.
+
+    **Campos obligatorios del mapeo:**
+
+    | Campo interno | Etiqueta en el diálogo | Obligatorio |
+    |---|---|---|
+    | `originador` | Número Origen | Sí |
+    | `receptor` | Número Destino | Sí |
+    | `fecha_hora` | Fecha y Hora | Sí |
+    | `duracion` | Duración (seg) | No |
+    | `nombre_celda` | Nombre Celda/Antena | No |
+    | `latitud_n` | Latitud (Decimal) | No |
+    | `longitud_w` | Longitud (Decimal) | No |
+  </Accordion>
+
+  <Accordion title="La aplicación no inicia (error de Tkinter o ttkthemes)">
+    **Síntoma:** Al ejecutar `python src/gui.py`, la ventana no aparece y el terminal muestra:
+
+    ```text
+    ModuleNotFoundError: No module named 'tkinter'
+    ModuleNotFoundError: No module named 'ttkthemes'
+    _tkinter.TclError: Unknown theme 'adapta'
+    ```
+
+    **Soluciones:**
+
+    **Caso 1: `tkinter` no está disponible**
+
+    `tkinter` no viene incluido en todas las distribuciones de Python. Instálalo según tu sistema operativo:
+
+    <Tabs>
+      <Tab title="Ubuntu/Debian">
+        ```bash
+        sudo apt-get install python3-tk
+        ```
+      </Tab>
+      <Tab title="macOS (Homebrew)">
+        ```bash
+        brew install python-tk@3.11
+        ```
+      </Tab>
+      <Tab title="Fedora">
+        ```bash
+        sudo dnf install python3-tkinter
+        ```
+      </Tab>
+      <Tab title="Windows">
+        En Windows, `tkinter` viene incluido con el instalador oficial de Python desde python.org. Si falta, reinstala Python marcando la opción `tcl/tk and IDLE`.
+      </Tab>
+    </Tabs>
+
+    **Caso 2: `ttkthemes` no está instalado**
+
+    ```bash
+    pip install ttkthemes>=3.2.2
+    ```
+
+    **Caso 3: El tema `adapta` no está disponible**
+
+    Algunas versiones de `ttkthemes` no incluyen todos los temas. Verifica qué temas tienes disponibles:
+
+    ```python
+    from ttkthemes import ThemedTk
+    root = ThemedTk()
+    print(root.get_themes())
+    ```
+
+    Si `adapta` no aparece en la lista, edita la constante `GUI_THEME` en `src/config/constants.py` y usa un tema disponible como `arc`, `breeze` o `equilux`.
+  </Accordion>
+
+</AccordionGroup>

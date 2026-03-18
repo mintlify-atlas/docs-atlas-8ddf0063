@@ -1,0 +1,112 @@
+---
+title: "Gestión de adjuntos PDF"
+description: "Cómo agregar, categorizar y eliminar documentos PDF que se incrustarán en el informe HTML final."
+---
+
+El Analizador de Llamadas Pro permite adjuntar documentos PDF de respaldo al informe. Estos archivos se copian dentro de la carpeta del informe y se muestran como pestañas navegables en el HTML final, lo que permite consolidar toda la evidencia documental en un único archivo portable.
+
+## Panel de adjuntos
+
+La sección **📎 Adjuntos (PDF)** se encuentra en la parte central de la ventana principal. Contiene:
+
+- Una tabla (`Treeview`) con dos columnas: **Categoría** y **Nombre del Archivo**.
+- Un botón **➕ Agregar** para añadir nuevos PDFs.
+- Un botón **⛔ Quitar** para eliminar los PDFs seleccionados.
+
+## Agregar un PDF
+
+<Steps>
+  <Step title="Hacer clic en ➕ Agregar">
+    Haz clic en el botón **➕ Agregar** en el panel de adjuntos. Se abrirá el explorador de archivos del sistema, filtrado para mostrar únicamente archivos `.pdf`.
+  </Step>
+  <Step title="Seleccionar el archivo PDF">
+    Navega hasta el documento y selecciónalo. El explorador solo permite seleccionar un archivo a la vez.
+  </Step>
+  <Step title="Asignar una categoría">
+    Inmediatamente después de seleccionar el archivo, aparece un diálogo pequeño **"Categoría"** con un desplegable de solo lectura. Selecciona la categoría que corresponda al documento:
+
+    <CardGroup cols={3}>
+      <Card title="Financiero">
+        Estados de cuenta, extractos bancarios, movimientos financieros.
+      </Card>
+      <Card title="Propiedades">
+        Escrituras, certificados de tradición, avalúos.
+      </Card>
+      <Card title="Vehículos">
+        RUNT, licencias de tránsito, seguros.
+      </Card>
+      <Card title="Judicial">
+        Denuncias, autos judiciales, providencias.
+      </Card>
+      <Card title="Antecedentes">
+        Certificados de antecedentes penales, disciplinarios o fiscales.
+      </Card>
+      <Card title="Otros">
+        Cualquier documento que no encaje en las categorías anteriores.
+      </Card>
+    </CardGroup>
+
+    Haz clic en **Aceptar** para confirmar.
+  </Step>
+  <Step title="Verificar en la tabla">
+    El archivo aparecerá en la tabla con su categoría y nombre. El registro de actividad mostrará el mensaje:
+
+    ```
+    📎 Adjuntado: nombre_archivo.pdf (Categoría)
+    ```
+  </Step>
+</Steps>
+
+## Eliminar un PDF adjunto
+
+<Steps>
+  <Step title="Seleccionar la fila">
+    Haz clic en la fila correspondiente al PDF que deseas eliminar en la tabla de adjuntos.
+  </Step>
+  <Step title="Hacer clic en ⛔ Quitar">
+    Haz clic en el botón **⛔ Quitar**. El archivo desaparece de la lista y el registro de actividad confirma:
+
+    ```
+    🗑️ Eliminado: nombre_archivo.pdf
+    ```
+
+    <Note>
+      Esta acción solo elimina el PDF de la lista de adjuntos para el informe actual. El archivo original en tu disco no se borra.
+    </Note>
+  </Step>
+</Steps>
+
+## Cómo se incrustan los PDFs en el informe
+
+Al generar el informe, el sistema copia cada PDF al directorio `data/` dentro de la carpeta del informe:
+
+```
+output/
+└── Informe_Llamadas/
+    ├── reports/
+    │   └── informe_llamadas.html
+    └── data/
+        ├── extracto_bancario.pdf
+        ├── antecedentes.pdf
+        └── ...
+```
+
+El template HTML referencia cada PDF con una ruta relativa (`../data/nombre_archivo.pdf`), por lo que el informe es completamente portable: basta con compartir la carpeta completa `Informe_Llamadas/` para que todos los PDFs sean accesibles desde el navegador.
+
+<Warning>
+  Si mueves o renombras el archivo HTML sin la carpeta `data/`, los PDFs adjuntos no se mostrarán. Comparte siempre la carpeta completa o usa la opción de subida FTP para alojar todo en un servidor.
+</Warning>
+
+## Consideraciones de tamaño
+
+<AccordionGroup>
+  <Accordion title="Impacto en el tamaño total del informe">
+    Cada PDF se copia íntegramente a la carpeta del informe. Un informe con varios PDFs pesados puede ocupar cientos de megabytes. Ten esto en cuenta si planeas subir el informe por FTP con conexión lenta.
+  </Accordion>
+  <Accordion title="Número de adjuntos">
+    No hay un límite programático en la cantidad de PDFs que puedes adjuntar. Sin embargo, un número excesivo puede hacer que el informe HTML sea difícil de navegar. Se recomienda incluir solo los documentos directamente relevantes al caso.
+  </Accordion>
+  <Accordion title="Compatibilidad de los PDFs">
+    El informe usa un `<iframe>` del navegador para mostrar los PDFs. Todos los navegadores modernos (Chrome, Firefox, Edge) soportan la visualización de PDFs directamente. En Safari, puede requerirse abrir el PDF en una pestaña separada.
+  </Accordion>
+</AccordionGroup>

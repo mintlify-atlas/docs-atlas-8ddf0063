@@ -1,0 +1,117 @@
+---
+title: "Enriquecimiento de datos"
+description: "Cómo asignar alias a números telefónicos y agregar metadatos del caso para mejorar la legibilidad del informe."
+---
+
+Una vez cargada la sábana, puedes enriquecer los datos antes de generar el informe de dos formas: asignando **alias** a los números telefónicos clave, y registrando los **datos generales del caso** (cliente, radicado, ciudad, etc.). Ambas acciones mejoran la legibilidad del informe y hacen que los gráficos y tablas sean interpretables sin conocimiento previo de los números.
+
+<Note>
+  Los botones **👤 Asignar Nombres/Alias** y **📝 Datos del Caso** solo se habilitan después de cargar exitosamente una sábana de llamadas.
+</Note>
+
+## Asignar alias a números telefónicos
+
+El botón **👤 Asignar Nombres/Alias** abre una ventana con la lista completa de números únicos detectados en las columnas `originador` y `receptor` de la sábana cargada.
+
+### Interfaz de asignación
+
+La ventana muestra:
+
+- El título indica el total de números encontrados: `👤 Asignar Nombres (N Números)`.
+- Un campo de búsqueda **🔍 Buscar** en la parte superior para filtrar por número o por alias ya asignado.
+- Una lista desplazable con dos columnas por fila: el número (en negrita) y un campo de texto editable para escribir el alias.
+- Filas con fondo alternado (blanco / gris claro) para facilitar la lectura.
+
+### Pasos para asignar alias
+
+<Steps>
+  <Step title="Abrir la ventana de nombres">
+    En la sección **⚙️ Procesamiento**, haz clic en **👤 Asignar Nombres/Alias**.
+  </Step>
+  <Step title="Buscar el número">
+    Usa el campo **🔍 Buscar** para filtrar la lista y localizar rápidamente el número al que deseas asignar un alias. El filtro actúa sobre el número y también sobre cualquier alias ya asignado.
+  </Step>
+  <Step title="Escribir el alias">
+    Haz clic en el campo de texto a la derecha del número y escribe el nombre o alias deseado.
+
+    ```
+    3001234567  →  Juan Pérez (Sospechoso)
+    3119876543  →  María Gómez (Víctima)
+    ```
+  </Step>
+  <Step title="Guardar los cambios">
+    Haz clic en **💾 Guardar Cambios**. El registro de actividad confirma cuántos alias quedaron guardados:
+
+    ```
+    Nombres actualizados: N
+    ```
+
+    Para eliminar un alias existente, borra el contenido del campo de texto y guarda.
+  </Step>
+</Steps>
+
+### Cómo se propagan los alias
+
+Cada alias se almacena en el diccionario interno `nombres_asignados` con el formato `{"número": "alias"}`. Al generar el informe, todos los componentes que muestran un número lo transforman al formato **`número (alias)`**:
+
+- Tablas de llamadas entrantes y salientes
+- Gráficos de barras Top 10 (llamadas recibidas y realizadas)
+- Gráficos de ubicación (origen/destino cruzado con celda)
+- Marcadores en los mapas interactivos
+- Lista de números únicos en el resumen del informe
+
+<Tip>
+  Asigna alias siempre antes de generar el informe. Si lo haces después, tendrás que volver a generar el informe para que los cambios se reflejen en los gráficos y tablas.
+</Tip>
+
+## Datos generales del caso
+
+El botón **📝 Datos del Caso** abre un editor de campos clave-valor para registrar la información de contexto del caso.
+
+### Campos predeterminados
+
+Al abrir el editor por primera vez, aparecen cinco campos predefinidos vacíos:
+
+| Campo | Descripción |
+|---|---|
+| `Cliente` | Nombre de la empresa o persona que solicita el análisis |
+| `Ciudad` | Ciudad donde se desarrolla el caso |
+| `Teléfono` | Número de contacto del cliente o del objetivo |
+| `Caso` | Identificador o nombre interno del caso |
+| `Periodo` | Rango de fechas de la sábana analizada |
+
+### Agregar campos personalizados
+
+Puedes añadir campos adicionales con el botón **➕ Agregar Campo Nuevo**. Cada campo nuevo tiene:
+
+- Un botón **✖** para eliminarlo.
+- Un campo de texto para el nombre del campo (ej: `Radicado`, `Fiscal`, `Juzgado`).
+- Un campo de texto para el valor.
+
+<Steps>
+  <Step title="Completar los campos existentes">
+    Escribe los valores correspondientes en los cinco campos predeterminados.
+  </Step>
+  <Step title="Agregar campos adicionales (opcional)">
+    Haz clic en **➕ Agregar Campo Nuevo** para cada campo extra que necesites. Escribe el nombre y el valor.
+  </Step>
+  <Step title="Guardar">
+    Haz clic en **💾 Guardar y Cerrar**. La ventana se cierra y los datos quedan almacenados.
+  </Step>
+</Steps>
+
+En el informe HTML, estos datos aparecen en la sección de información general con el formato `NombreCampo: Valor`, lo que permite identificar de un vistazo el caso al que pertenece el análisis.
+
+## Buenas prácticas
+
+<AccordionGroup>
+  <Accordion title="Nomenclatura consistente para alias">
+    Usa el formato `Nombre Apellido (Rol)` para que los gráficos sean auto-explicativos. Ejemplo: `Carlos Ruiz (Objetivo)`, `Ana Torres (Cómplice)`. Evita caracteres especiales que puedan romper la visualización en el HTML.
+  </Accordion>
+  <Accordion title="Completar Datos del Caso antes de generar">
+    Los datos generales aparecen en el encabezado del informe. Rellenarlos antes de exportar evita tener que regenerar el informe solo por datos faltantes.
+  </Accordion>
+  <Accordion title="Números sin alias">
+    Los números a los que no se les asigna alias se muestran en el informe con su número completo normalizado (ej: `3001234567`). Esto es válido para números secundarios o desconocidos.
+  </Accordion>
+</AccordionGroup>

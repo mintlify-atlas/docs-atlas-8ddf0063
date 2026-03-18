@@ -1,0 +1,137 @@
+---
+title: "Preguntas frecuentes"
+description: "Respuestas a las dudas más comunes sobre el uso del Analizador de Llamadas Pro."
+---
+
+<AccordionGroup>
+
+  <Accordion title="¿Qué formatos de archivo puedo cargar?">
+    La herramienta acepta archivos **Excel** (`.xlsx`, `.xls`) y **CSV**. El formato Excel es el más compatible porque el sistema detecta automáticamente las hojas de entrantes, salientes y datos de internet.
+
+    En archivos Excel, el sistema busca hojas cuyos nombres contengan:
+    - `entrant` o `incoming` → asignadas como llamadas entrantes
+    - `salient` o `outgoing` → asignadas como llamadas salientes
+    - `dato` → registros de tráfico de datos de internet
+
+    Si no detecta ninguna de estas hojas, lee la primera hoja disponible y asigna el tipo `desconocido`.
+
+    <Tip>
+      Si tu operador entrega los datos en una sola hoja con una columna de tipo, usa el asistente de mapeo para relacionar esa columna con el campo `tipo_llamada`.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="¿Qué ocurre si mi archivo no tiene coordenadas GPS?">
+    El sistema aplica un proceso de geocodificación multinivel en cascada:
+
+    1. **Plan A — GPS nativo:** si el archivo tiene columnas de latitud y longitud con valores, las usa directamente.
+    2. **Plan B — Base de datos de celdas:** si existe `static/db/celdas.csv`, cruza el nombre técnico de la antena (ej: `ANT.BARBOSA-2_R1`) para obtener sus coordenadas exactas.
+    3. **Plan C — Inferencia por municipio:** si los planes anteriores fallan, el sistema detecta el nombre del municipio dentro del texto de la celda (ej: `"MEDELLIN"` en `"ANT.MEDELLIN-2"`) y asigna las coordenadas del centroide de ese municipio, previa confirmación del usuario.
+
+    Si ningún plan produce coordenadas, el informe se genera igualmente pero sin los mapas. Las tablas de llamadas y los gráficos estadísticos siguen funcionando.
+  </Accordion>
+
+  <Accordion title="¿Puedo usar la herramienta sin la base de datos de celdas?">
+    Sí. La base de datos `static/db/celdas.csv` es **opcional**. Si el archivo no existe, el sistema muestra una advertencia en el log y desactiva el Plan B silenciosamente. La aplicación continúa funcionando con los Planes A y C.
+
+    Para habilitar el Plan B, coloca tu archivo maestro de antenas en:
+
+    ```text
+    static/db/celdas.csv
+    ```
+
+    El archivo debe tener columnas de nombre de celda, latitud y longitud. El geocodificador detecta los nombres de las columnas automáticamente buscando los patrones `BTS`, `Nombre`, `Latitud`, `Longitud`, `LAT` y `LON`.
+  </Accordion>
+
+  <Accordion title="¿Cómo asigno nombres o alias a los números telefónicos?">
+    En la interfaz gráfica, haz clic en el botón **Asignar Nombres**. Aparece un diálogo donde puedes escribir un alias para cada número.
+
+    Los alias se aplican de inmediato a:
+    - Las etiquetas de los gráficos de barras.
+    - Los popups de los mapas de clusters.
+    - Las tablas del informe HTML.
+    - El archivo `call_data.js` que alimenta los gráficos interactivos.
+
+    Los aliases se almacenan en el diccionario `nombres_asignados` que maneja la GUI durante la sesión. No se persisten entre reinicios de la aplicación.
+  </Accordion>
+
+  <Accordion title="¿Dónde se guardan los informes generados?">
+    Todos los informes se guardan en el directorio `output/` dentro de la raíz del proyecto. Cada informe ocupa su propia subcarpeta con el nombre que especifiques en el campo **Nombre del informe** de la interfaz.
+
+    ```text
+    output/
+    └── Mi_Caso_2025/
+        ├── reports/
+        │   └── informe_llamadas.html   ← archivo principal
+        ├── maps/
+        ├── graphics/
+        ├── data/
+        └── static/
+    ```
+
+    El archivo `reports/informe_llamadas.html` es autocontenido: puedes enviarlo o comprimirlo junto con el resto de la subcarpeta y funcionará sin conexión a internet.
+  </Accordion>
+
+  <Accordion title="¿Por qué aparece el asistente de mapeo de columnas?">
+    El diálogo de mapeo aparece cuando el sistema detecta que las columnas del archivo Excel **no coinciden automáticamente** con los nombres internos esperados (`originador`, `receptor`, `fecha_hora`, `duracion`, etc.).
+
+    Esto ocurre habitualmente cuando:
+    - El operador entrega los datos con nombres de columna propios (ej: `"Numero Llamante"`, `"Calling Number"`).
+    - Las columnas están en inglés o tienen espacios o tildes.
+    - El archivo tiene una estructura personalizada.
+
+    En el diálogo, selecciona de la lista desplegable qué columna de tu Excel corresponde a cada campo interno. Los campos obligatorios son **Número Origen**, **Número Destino** y **Fecha y Hora**. Los demás son opcionales.
+
+    <Tip>
+      Si siempre recibes archivos con el mismo formato, el mapeo se hace solo una vez por formato. Considera estandarizar los nombres de columna en tu fuente para evitar el diálogo en el futuro.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="¿Cómo funciona la inferencia de municipios?">
+    El Plan C de geocodificación busca el nombre de un municipio colombiano dentro del texto técnico del nombre de la celda. El proceso es:
+
+    1. Normaliza el texto de la celda eliminando tildes y convirtiéndolo a mayúsculas.
+    2. Itera sobre todos los municipios en `static/db/municipios_colombia.csv`.
+    3. Compara si el nombre del municipio (también normalizado) aparece como subcadena en el texto de la celda.
+    4. Si hay coincidencia, devuelve las coordenadas del centroide de ese municipio.
+
+    ```text
+    Celda:      "ANT.MEDELLIN-2_R1"
+    Normalizado: "ANT.MEDELLIN-2_R1"
+    Municipio:  "MEDELLIN" → encontrado
+    Resultado:  (6.244203, -75.581211)
+    ```
+
+    Se excluyen municipios con nombres de menos de 4 caracteres para evitar falsos positivos.
+
+    <Note>
+      Las coordenadas inferidas corresponden al centroide del municipio, no a la posición exacta de la antena. Son una aproximación útil cuando no se dispone de la base de datos `celdas.csv`.
+    </Note>
+  </Accordion>
+
+  <Accordion title="¿Puedo usar esta herramienta en macOS o Linux?">
+    Sí. La herramienta es compatible con **Windows 10/11, macOS y Linux**, siempre que tengas instalado Python 3.9 o superior.
+
+    En macOS y Linux debes asegurarte de que Tkinter esté disponible, ya que en algunas distribuciones no viene incluido:
+
+    <Tabs>
+      <Tab title="Ubuntu/Debian">
+        ```bash
+        sudo apt-get install python3-tk
+        ```
+      </Tab>
+      <Tab title="macOS (Homebrew)">
+        ```bash
+        brew install python-tk
+        ```
+      </Tab>
+      <Tab title="Fedora/RHEL">
+        ```bash
+        sudo dnf install python3-tkinter
+        ```
+      </Tab>
+    </Tabs>
+
+    El tema visual `adapta` de `ttkthemes` puede verse diferente en macOS y Linux respecto a Windows, pero es completamente funcional.
+  </Accordion>
+
+</AccordionGroup>

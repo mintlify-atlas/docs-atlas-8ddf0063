@@ -1,0 +1,104 @@
+---
+title: "Requisitos del sistema"
+description: "Versiones de Python, sistema operativo, librerías y hardware necesarios para ejecutar el Analizador de Llamadas Pro."
+---
+
+## Sistema operativo
+
+El Analizador de Llamadas Pro es compatible con los tres sistemas operativos principales:
+
+| Sistema | Versiones probadas |
+|---------|-------------------|
+| Windows | 10, 11 |
+| macOS | 12 Monterey o superior |
+| Linux | Ubuntu 20.04+, Debian 11+, Fedora 38+ |
+
+<Note>
+  La interfaz gráfica usa Tkinter con el tema `adapta` (librería `ttkthemes`). En Linux puede ser necesario instalar el paquete `python3-tk` del gestor de paquetes del sistema antes de ejecutar la aplicación.
+</Note>
+
+---
+
+## Python
+
+Se requiere **Python 3.9 o superior**.
+
+```bash
+python --version
+# Python 3.9.x o superior
+```
+
+<Warning>
+  Python 3.8 y versiones anteriores no son compatibles. Algunas librerías como `pandas>=2.0.0` y la sintaxis `match/case` utilizada internamente requieren Python 3.9+.
+</Warning>
+
+---
+
+## Dependencias Python
+
+Todas las dependencias se instalan con `pip install -r requirements.txt`. La siguiente tabla describe la versión mínima y el propósito de cada una:
+
+| Librería | Versión mínima | Propósito |
+|----------|---------------|-----------|
+| `pandas` | 2.0.0 | Carga, limpieza y transformación de las sábanas de llamadas (DataFrames) |
+| `numpy` | 1.24.0 | Operaciones numéricas auxiliares de pandas |
+| `jinja2` | 3.1.0 | Motor de plantillas para ensamblar el informe HTML a partir de `templates/report_template.html` |
+| `folium` | 0.15.0 | Generación de mapas interactivos (clusters, rutas cronológicas, mapa de calor) embebidos en el informe |
+| `matplotlib` | 3.7.0 | Gráficos estáticos de barras para el top de llamadas y visualización de ubicaciones |
+| `seaborn` | 0.13.0 | Estilos visuales aplicados a los gráficos de matplotlib |
+| `phonenumbers` | 8.13.0 | Normalización y validación de números telefónicos colombianos e internacionales |
+| `openpyxl` | 3.1.0 | Lectura de archivos Excel `.xlsx` con pandas |
+| `ttkthemes` | 3.2.2 | Tema visual `adapta` para la interfaz Tkinter |
+| `plotly` | 5.18.0 | Gráficos interactivos embebidos en el dashboard del informe HTML |
+| `python-dotenv` | 1.0.0 | Carga de variables de entorno desde el archivo `.env` (credenciales FTP, nivel de logs) |
+
+<Info>
+  El archivo `requirements.txt` en la raíz del repositorio ya contiene estas versiones con el operador `>=`, lo que permite instalaciones con versiones superiores compatibles.
+</Info>
+
+---
+
+## Hardware recomendado
+
+El sistema no tiene requisitos de hardware exigentes, pero el rendimiento de carga y generación de informes varía según el tamaño de la sábana:
+
+| Componente | Mínimo | Recomendado |
+|------------|--------|-------------|
+| Procesador | Doble núcleo 2.0 GHz | Cuádruple núcleo 2.5 GHz o superior |
+| RAM | 4 GB | 8 GB o más (para sábanas con más de 50.000 registros) |
+| Almacenamiento | 500 MB libres | 2 GB libres (espacio para informes con adjuntos PDF) |
+| Resolución de pantalla | 1280 × 720 | 1920 × 1080 (la ventana mínima es 900 × 700 px) |
+
+<Tip>
+  La generación de mapas Folium y los gráficos matplotlib se ejecutan en hilos secundarios para no bloquear la interfaz. Aun así, sábanas de más de 100.000 registros pueden tardar varios segundos en procesarse.
+</Tip>
+
+---
+
+## Dependencias del sistema operativo
+
+<Tabs>
+  <Tab title="Windows">
+    No se requieren dependencias adicionales. Python y pip son suficientes.
+
+    ```bat
+    pip install -r requirements.txt
+    ```
+  </Tab>
+  <Tab title="macOS">
+    Si usas Homebrew, asegúrate de tener `python-tk`:
+
+    ```bash
+    brew install python-tk
+    pip3 install -r requirements.txt
+    ```
+  </Tab>
+  <Tab title="Linux (Ubuntu/Debian)">
+    Instala el paquete de Tkinter antes de ejecutar la aplicación:
+
+    ```bash
+    sudo apt-get install python3-tk
+    pip3 install -r requirements.txt
+    ```
+  </Tab>
+</Tabs>

@@ -1,0 +1,167 @@
+---
+title: "Estructura del proyecto"
+description: "Organización de directorios y archivos del repositorio Analizador de Llamadas Pro."
+---
+
+El repositorio sigue una estructura modular que separa el código fuente, los recursos estáticos, las plantillas HTML y los artefactos generados en tiempo de ejecución.
+
+## Árbol de directorios
+
+```text
+coyprot_analisis_sabanas/
+│
+├── src/                         # Código fuente Python
+│   ├── gui.py                   # Interfaz gráfica principal (Tkinter + ThemedTk)
+│   ├── main.py                  # Punto de entrada CLI
+│   ├── excel_utils.py           # Lectura y limpieza de archivos Excel/CSV
+│   ├── phone_utils.py           # Normalización de números telefónicos
+│   ├── geo_utils.py             # Generación de mapas Folium y Plotly
+│   ├── graphics_utils.py        # Gráficos estadísticos (Matplotlib + Seaborn)
+│   ├── report_generator.py      # Orquestador del informe HTML (Jinja2)
+│   ├── ftp_utils.py             # Cliente FTP con TLS
+│   ├── cell_geocoder.py         # Geocodificación por base de datos de celdas
+│   ├── colombia_data.py         # Inferencia de coordenadas por municipio
+│   ├── column_mapper.py         # Diálogo UI para mapeo de columnas
+│   ├── data_models.py           # Modelos de datos (dataclasses)
+│   ├── utils.py                 # Utilidades generales y logging
+│   └── config/
+│       ├── __init__.py
+│       ├── constants.py         # Constantes globales (magic strings, parámetros)
+│       └── settings.py          # Configuración centralizada desde .env
+│
+├── static/                      # Recursos estáticos base (empaquetados con el informe)
+│   ├── assets_img/
+│   │   ├── logo.png             # Logo corporativo Coyprot
+│   │   └── info.png             # Icono de información
+│   ├── assets_js/
+│   │   ├── interactive_charts.js  # Lógica de gráficos interactivos en el reporte
+│   │   └── interactive_maps.js    # Lógica de mapas interactivos en el reporte
+│   └── db/
+│       ├── celdas.csv           # Base de datos de antenas telefónicas (Plan B)
+│       └── municipios_colombia.csv  # Centroides de municipios colombianos (Plan C)
+│
+├── templates/
+│   └── report_template.html     # Plantilla Jinja2 del informe HTML final
+│
+├── output/                      # Informes generados (creado en tiempo de ejecución)
+│   └── <nombre_informe>/
+│       ├── reports/
+│       │   └── informe_llamadas.html
+│       ├── maps/
+│       │   ├── mapa_agrupado.html
+│       │   ├── mapa_calor.html
+│       │   └── mapa_recorrido.html
+│       ├── graphics/            # Imágenes PNG de los gráficos estadísticos
+│       ├── data/                # PDFs adjuntos copiados
+│       └── static/              # Copia de assets_js y assets_img para portabilidad
+│
+├── logs/
+│   └── app.log                  # Registro de ejecución (creado en tiempo de ejecución)
+│
+├── .env                         # Variables de entorno locales (NO versionar)
+├── .env.example                 # Plantilla de variables de entorno
+└── requirements.txt             # Dependencias Python
+```
+
+## Descripción de los directorios principales
+
+<CardGroup cols={2}>
+  <Card title="src/" icon="code">
+    Contiene todo el código fuente Python. Cada módulo es responsable de una única capa funcional: lectura de datos, geocodificación, generación de gráficos, renderizado del informe, etc.
+  </Card>
+  <Card title="static/" icon="folder-open">
+    Recursos que se empaquetan dentro del informe HTML al generarlo. El subdirectorio `db/` contiene las bases de datos CSV de antenas y municipios.
+  </Card>
+  <Card title="templates/" icon="file-code">
+    Plantilla Jinja2 que define la estructura visual del informe. Los nombres de mapas definidos en `constants.py` deben coincidir con los referencias en `report_template.html`.
+  </Card>
+  <Card title="output/" icon="download">
+    Directorio de salida. Cada informe generado crea su propia subcarpeta con todos los artefactos necesarios para ser distribuido de forma autocontenida.
+  </Card>
+</CardGroup>
+
+## El directorio `output/`
+
+Cada vez que se genera un informe, el sistema crea la siguiente estructura bajo `output/<nombre_informe>/`:
+
+| Subdirectorio | Contenido |
+|---|---|
+| `reports/` | El archivo `informe_llamadas.html` — el informe principal |
+| `maps/` | Los tres archivos HTML de mapas Folium/Plotly |
+| `graphics/` | Las imágenes PNG de los gráficos estadísticos generados con Matplotlib |
+| `data/` | Copias de los PDFs adjuntos categorizados |
+| `static/` | Copia de `assets_js/` y `assets_img/` para que el HTML sea portable |
+
+<Note>
+  El directorio `output/` completo es autocontenido. Puedes comprimirlo y enviarlo, o subirlo al servidor FTP, y el informe funcionará sin conexión a internet.
+</Note>
+
+## El directorio `logs/`
+
+El sistema de logging escribe en `logs/app.log` usando el modo de apertura `append` (`a`), por lo que el archivo crece con cada ejecución.
+
+- **Ubicación:** `<raíz_del_proyecto>/logs/app.log`
+- **Formato de cada línea:** `HH:MM:SS - LEVEL - mensaje`
+- **Nivel por defecto:** `INFO` (configurable en `.env` con `LOG_LEVEL`)
+- **Encodificación:** UTF-8
+
+Las entradas del log también se muestran en tiempo real en el panel inferior de la interfaz gráfica.
+
+## Archivos de configuración clave
+
+<AccordionGroup>
+  <Accordion title="src/config/constants.py">
+    Define todas las constantes globales de la aplicación: nombres de columnas internas, tipos de llamada, categorías de PDF, campos del caso, parámetros de mapas y configuración visual de la GUI.
+
+    ```python
+    # Nombres de columnas internas
+    COL_ORIGINATOR: Final[str] = "originador"
+    COL_RECEIVER:   Final[str] = "receptor"
+    COL_DATETIME:   Final[str] = "fecha_hora"
+    COL_DURATION:   Final[str] = "duracion"
+    COL_CELL_NAME:  Final[str] = "nombre_celda"
+    COL_LATITUDE:   Final[str] = "latitud_n"
+    COL_LONGITUDE:  Final[str] = "longitud_w"
+
+    # Nombres de archivos de mapas (deben coincidir con report_template.html)
+    MAP_FILE_CLUSTER:  Final[str] = "mapa_agrupado.html"
+    MAP_FILE_HEATMAP:  Final[str] = "mapa_calor.html"
+    MAP_FILE_ROUTE:    Final[str] = "mapa_rutas.html"
+    ```
+  </Accordion>
+  <Accordion title="src/config/settings.py">
+    Carga parámetros desde variables de entorno mediante la clase `Settings`. Resuelve rutas absolutas compatibles con PyInstaller para que el ejecutable encuentre los recursos correctamente.
+
+    ```python
+    class Settings:
+        app_dir:     Path = APP_DIR
+        output_dir:  Path = APP_DIR / "output"
+        logs_dir:    Path = APP_DIR / "logs"
+        cell_db_path: Path = APP_DIR / "static" / "db" / "celdas.csv"
+
+        ftp_host: str = os.environ.get("FTP_HOST", "")
+        ftp_user: str = os.environ.get("FTP_USER", "")
+        ftp_pass: str = os.environ.get("FTP_PASS", "")
+
+        log_level: str = os.environ.get("LOG_LEVEL", "INFO")
+        geo_proximity_km: float = float(os.environ.get("GEO_PROXIMITY_KM", "50"))
+    ```
+  </Accordion>
+  <Accordion title=".env.example">
+    Plantilla de variables de entorno. Cópiala como `.env` en la raíz del proyecto y completa los valores antes de ejecutar la aplicación.
+
+    ```bash
+    # Credenciales FTP
+    FTP_HOST=tu_dominio.com
+    FTP_USER=tu_usuario_ftp
+    FTP_PASS=tu_contraseña_ftp
+    FTP_PUBLIC_HTML=public_html
+
+    # Nivel de logs: DEBUG, INFO, WARNING, ERROR
+    LOG_LEVEL=INFO
+
+    # Radio máximo en km para asignar municipio más cercano
+    GEO_PROXIMITY_KM=50
+    ```
+  </Accordion>
+</AccordionGroup>

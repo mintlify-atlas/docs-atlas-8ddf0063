@@ -1,0 +1,552 @@
+---
+title: "Referencia de módulos"
+description: "Documentación de cada módulo Python del proyecto: firmas de funciones, responsabilidades y comportamiento."
+---
+
+El código fuente está organizado en módulos de responsabilidad única dentro del directorio `src/`. A continuación se documenta cada módulo con sus funciones principales, parámetros y comportamiento.
+
+<AccordionGroup>
+
+  <Accordion title="excel_utils.py — Lectura y limpieza de Excel">
+    Responsable de leer el archivo Excel o CSV de entrada, detectar las hojas relevantes y dejar el `DataFrame` limpio y normalizado para el resto del sistema.
+
+    ### `cargar_excel_crudo(file_path)`
+
+    Lee el archivo Excel buscando hojas de **entrantes**, **salientes** y **DATOS**. Si no detecta hojas específicas, lee la primera hoja como genérica.
+
+    ```python
+    def cargar_excel_crudo(file_path: str) -> tuple[pd.DataFrame | None, str | None]:
+        ...
+    ```
+
+    | Parámetro | Tipo | Descripción |
+    |---|---|---|
+    | `file_path` | `str` | Ruta absoluta al archivo `.xlsx`, `.xls` o `.csv` |
+
+    **Retorna:** `(DataFrame, None)` si la lectura fue exitosa, o `(None, mensaje_error)` si falló.
+
+    La función aplica estas transformaciones automáticas:
+    - Normaliza los nombres de columna a minúsculas sin espacios.
+    - Elimina filas completamente vacías.
+    - Asigna el valor de `tipo_llamada` según la hoja de origen (`entrante`, `saliente`, `DATOS`).
+    - Para la hoja de DATOS, mapea columnas técnicas (`fecha_trafico` → `fecha_hora`, `latitud` → `latitud_n`, etc.).
+
+    ### `procesar_dataframe_con_mapeo(df, mapping)`
+
+    Aplica limpieza profunda al `DataFrame` crudo: normalización de teléfonos, parseo de fechas y corrección de coordenadas.
+
+    ```python
+    def procesar_dataframe_con_mapeo(
+        df: pd.DataFrame,
+        mapping: dict[str, str] | None
+    ) -> pd.DataFrame | None:
+        ...
+    ```
+
+    | Parámetro | Tipo | Descripción |
+    |---|---|---|
+    | `df` | `pd.DataFrame` | DataFrame crudo resultante de `cargar_excel_crudo()` |
+    | `mapping` | `dict` o `None` | Mapa `{columna_interna: columna_excel}` producido por el diálogo `ColumnMapperDialog` |
+
+    El procesamiento sigue este orden:
+
+    <Steps>
+      <Step title="Aplicar mapeo de columnas">
+        Renombra las columnas del Excel a los nombres internos del sistema (`originador`, `receptor`, `fecha_hora`, etc.).
+      </Step>
+      <Step title="Normalizar teléfonos">
+        Aplica `normalizar_numero_colombia()` sobre las columnas `originador` y `receptor`.
+      </Step>
+      <Step title="Parsear fechas">
+        Invoca `robust_date_parser()` para convertir cada valor de `fecha_hora` al tipo `datetime`, manejando formatos seriales de Excel y texto variado.
+      </Step>
+      <Step title="Corregir coordenadas">
+        Detecta y corrige errores de escala (p. ej. `7375060` → `7.375060`), reemplaza comas por puntos y elimina valores inválidos (`0`, `?`, `nan`).
+      </Step>
+    </Steps>
+
+    ### `robust_date_parser(value)`
+
+    Motor interno de parseo de fechas. Maneja en orden:
+    1. Valores nulos o cadenas vacías → `pd.NaT`
+    2. Números decimales en formato serial de Excel (rango 32874–51138)
+    3. Formatos de texto específicos: `%Y/%m/%d %H:%M:%S`, `%d/%m/%Y %H:%M:%S`, `%Y-%m-%d %H:%M:%S`, etc.
+    4. Parseo automático de pandas como último recurso
+  </Accordion>
+
+  <Accordion title="phone_utils.py — Normalización telefónica">
+    Limpia y estandariza números telefónicos al formato de 10 dígitos usado en Colombia. Complementa la validación con la librería `phonenumbers`.
+
+    ### `normalizar_numero_colombia(numero)`
+
+    ```python
+    def normalizar_numero_colombia(numero: any) -> str:
+        ...
+    ```
+
+    Aplica la siguiente lógica en cascada:
+
+    | Caso | Entrada | Salida |
+    |---|---|---|
+    | Nulo o basura | `NaN`, `"?"`, `"0"` | `"Desconocido"` |
+    | 10 dígitos | `"3001234567"` | `"3001234567"` |
+    | Prefijo país | `"573001234567"` | `"3001234567"` |
+    | Internacional largo | `"009573001234567"` | `"3001234567"` |
+    | Con puntos/comas | `"300.123.4567"` | `"3001234567"` |
+    | Con espacios | `"  315 123 4567  "` | `"3151234567"` |
+
+    ### `validar_numero(numero, region="CO")`
+
+    Valida si un número es técnicamente posible según la librería `phonenumbers`.
+
+    ```python
+    def validar_numero(numero: str, region: str = "CO") -> bool:
+        ...
+    ```
+
+    ### `formatear_numero(numero, region="CO", formato=...)`
+
+    Produce formato visual para el reporte (ej: `+57 300 123 4567`).
+
+    ```python
+    def formatear_numero(
+        numero: str,
+        region: str = "CO",
+        formato = phonenumbers.PhoneNumberFormat.INTERNATIONAL
+    ) -> str:
+        ...
+    ```
+
+    ### `detectar_region(numero)`
+
+    Devuelve el código ISO del país asociado al número (ej: `"CO"`, `"US"`).
+
+    ```python
+    def detectar_region(numero: str) -> str | None:
+        ...
+    ```
+  </Accordion>
+
+  <Accordion title="geo_utils.py — Generación de mapas">
+    Genera los tres tipos de mapas interactivos que se incrustan en el informe HTML. Usa Folium para el mapa de clusters y el mapa de calor, y Plotly para el timeline de recorrido de datos.
+
+    ### `generar_mapa_agrupado(df, output_path, nombres_asignados=None)`
+
+    Mapa Folium de clusters separado por tipo de llamada (entrantes en azul, salientes en verde, datos en morado).
+
+    ```python
+    def generar_mapa_agrupado(
+        df: pd.DataFrame,
+        output_path: str,
+        nombres_asignados: dict[str, str] | None = None
+    ) -> None:
+        ...
+    ```
+
+    - Requiere columnas `latitud_n` y `longitud_w` con valores numéricos válidos.
+    - Genera tres capas `MarkerCluster` independientes con control de capas.
+    - Los marcadores muestran en el popup: número (con alias si está asignado), fecha/hora y tipo de llamada.
+    - Guarda el resultado en `output_path` como archivo HTML autocontenido.
+
+    ### `generar_mapa_rutas(df, output_path, nombres_asignados=None)`
+
+    Timeline animado (Plotly) del recorrido cronológico de registros de datos de internet. Se usa **exclusivamente** con las filas de tipo `DATOS`, nunca con llamadas de voz.
+
+    ```python
+    def generar_mapa_rutas(
+        df: pd.DataFrame,
+        output_path: str,
+        nombres_asignados: dict[str, str] | None = None
+    ) -> None:
+        ...
+    ```
+
+    - Ordena los registros por `fecha_hora` antes de animar.
+    - Muestra un slider de tiempo con el formato `YYYY-MM-DD HH:MM:SS`.
+    - El tooltip tipo card muestra: nombre de antena (o ID de celda), fecha, hora y coordenadas.
+    - Sin autoplay: el usuario controla la reproducción con los botones ▶ / ⏸.
+
+    ### `generar_mapa_calor(df, output_path)`
+
+    Mapa de calor Folium que visualiza la densidad de actividad por zona geográfica.
+
+    ```python
+    def generar_mapa_calor(
+        df: pd.DataFrame,
+        output_path: str
+    ) -> None:
+        ...
+    ```
+
+    - Radio del punto de calor: `15` px; difuminado: `20` px (según `MAP_HEATMAP_RADIUS` y `MAP_HEATMAP_BLUR` en `constants.py`).
+    - Usa fondo OpenStreetMap.
+    - Filtra automáticamente filas sin coordenadas válidas mediante `_limpiar_coordenadas()`.
+  </Accordion>
+
+  <Accordion title="graphics_utils.py — Gráficos estadísticos">
+    Genera gráficos PNG con Matplotlib y Seaborn para incluir en el informe HTML.
+
+    ### `generar_grafico_top_llamadas(datos, columna, titulo, output_path, nombres_asignados=None, ascendente=False)`
+
+    Gráfico de barras con el Top 10 de números más frecuentes.
+
+    ```python
+    def generar_grafico_top_llamadas(
+        datos: pd.DataFrame,
+        columna: str,
+        titulo: str,
+        output_path: str,
+        nombres_asignados: dict[str, str] | None = None,
+        ascendente: bool = False
+    ) -> None:
+        ...
+    ```
+
+    | Parámetro | Descripción |
+    |---|---|
+    | `datos` | DataFrame filtrado (ej: solo entrantes o solo salientes) |
+    | `columna` | Nombre de columna a contabilizar (`"originador"` o `"receptor"`) |
+    | `titulo` | Título del gráfico tal como aparece en el informe |
+    | `nombres_asignados` | Diccionario `{número: alias}` para enriquecer etiquetas |
+
+    Si se proporcionan `nombres_asignados`, la etiqueta de cada barra muestra el número y el alias en líneas separadas.
+
+    ### `generar_grafico_horario_llamadas(datos, output_path)`
+
+    Gráfico de línea de actividad por hora del día (0–23h).
+
+    ```python
+    def generar_grafico_horario_llamadas(
+        datos: pd.DataFrame,
+        output_path: str
+    ) -> None:
+        ...
+    ```
+
+    - Agrupa por hora y rellena con `0` las horas sin actividad.
+    - Color `dodgerblue` con marcadores circulares.
+    - Útil para identificar patrones de actividad nocturna o madrugada.
+
+    ### `generar_grafico_top_ubicacion(datos, col_numero, col_ubicacion, titulo, output_path, nombres_asignados=None)`
+
+    Gráfico de barras que cruza los Top 10 números con su ubicación geográfica más frecuente.
+
+    ```python
+    def generar_grafico_top_ubicacion(
+        datos: pd.DataFrame,
+        col_numero: str,
+        col_ubicacion: str,
+        titulo: str,
+        output_path: str,
+        nombres_asignados: dict[str, str] | None = None
+    ) -> None:
+        ...
+    ```
+
+    La etiqueta de cada barra muestra en tres líneas: el número, el alias (si existe) y la ubicación más frecuente extraída por la moda de `col_ubicacion`. El nombre técnico de la celda se limpia automáticamente: `"ANT.BARBOSA-2_R1"` → `"BARBOSA"`.
+  </Accordion>
+
+  <Accordion title="report_generator.py — Generación del informe HTML">
+    Orquesta la construcción completa del informe: mapas, gráficos, adjuntos y renderizado con Jinja2.
+
+    ### `generar_informe_html(...)`
+
+    ```python
+    def generar_informe_html(
+        df: pd.DataFrame,
+        nombre_informe: str,
+        incluir_membrete: bool = False,
+        logo_path: str | None = None,
+        lista_adjuntos: list[dict] | None = None,
+        nombres_asignados: dict[str, str] | None = None,
+        datos_generales: dict | None = None
+    ) -> str:
+        ...
+    ```
+
+    **Retorna** la ruta absoluta a la carpeta del informe generado (`output/<nombre_informe>/`).
+
+    El proceso interno sigue estos pasos:
+
+    <Steps>
+      <Step title="Separación de registros">
+        Divide el DataFrame en `df_llamadas` (voz) y `df_datos` (internet). Las estadísticas y tablas solo usan `df_llamadas`. El mapa de recorrido usa exclusivamente `df_datos`.
+      </Step>
+      <Step title="Copiar adjuntos PDF">
+        Copia cada PDF de `lista_adjuntos` a `output/<nombre>/data/` y registra su categoría y ruta relativa.
+      </Step>
+      <Step title="Copiar recursos estáticos">
+        Copia `interactive_charts.js`, `interactive_maps.js`, `logo.png` e `info.png` al subdirectorio `static/` del informe para hacerlo portable.
+      </Step>
+      <Step title="Generar mapas">
+        Invoca `generar_mapa_agrupado()` y `generar_mapa_calor()` sobre `df_llamadas`, y `generar_mapa_rutas()` sobre `df_datos` (solo si este no está vacío).
+      </Step>
+      <Step title="Calcular estadísticas y geografía">
+        Calcula top entrantes, top salientes, promedio de llamadas y, para cada registro, infiere departamento y municipio con `obtener_ubicacion_completa()`.
+      </Step>
+      <Step title="Renderizar plantilla Jinja2">
+        Renderiza `templates/report_template.html` con todas las variables calculadas y escribe el HTML resultante en `reports/informe_llamadas.html`.
+      </Step>
+    </Steps>
+
+    ### `generar_datos_llamadas_json(df, output_path, nombres_asignados=None)`
+
+    Genera el archivo `call_data.js` para los gráficos interactivos del reporte. Excluye filas de tipo `DATOS` para no contaminar las visualizaciones de llamadas de voz.
+
+    ```python
+    def generar_datos_llamadas_json(
+        df: pd.DataFrame,
+        output_path: str,
+        nombres_asignados: dict[str, str] | None = None
+    ) -> None:
+        ...
+    ```
+
+    El archivo resultante tiene el formato:
+
+    ```javascript
+    const CALL_DATA = {
+      "3001234567 (Juan)": [
+        {
+          "numero": "3001234567 (Juan)",
+          "fecha_hora": "2025-10-08T12:04:47",
+          "hora": 12,
+          "tipo_llamada": "entrante",
+          "latitud": 6.244203,
+          "longitud": -75.581211
+        }
+      ]
+    };
+    ```
+  </Accordion>
+
+  <Accordion title="cell_geocoder.py — Geocodificación por base de datos de celdas">
+    Implementa el Plan B de geocodificación: cruzar el nombre técnico de la antena contra la base de datos `celdas.csv` para obtener sus coordenadas exactas.
+
+    ### Clase `CellGeocoder`
+
+    ```python
+    class CellGeocoder:
+        def __init__(self, db_path: str):
+            ...
+    ```
+
+    Al instanciarse, carga y procesa automáticamente el CSV de celdas mediante `cargar_base_datos()`.
+
+    #### `limpiar_nombre_sitio(nombre)`
+
+    Elimina sufijos técnicos del nombre de la antena para encontrar el nombre raíz del sitio físico.
+
+    ```python
+    def limpiar_nombre_sitio(self, nombre: str) -> str:
+        ...
+    ```
+
+    ```text
+    Entrada:  "ANT.BARBOSA-2_R1"
+    Proceso:  regex r'_([A-Z0-9]{1,4}|LTE|UMTS|GSM)$' aplicado dos veces
+    Salida:   "ANT.BARBOSA-2"
+    ```
+
+    #### `cargar_base_datos()`
+
+    Carga el CSV intentando primero separador `;` (latin-1) y luego `,`. Detecta dinámicamente las columnas de nombre, latitud y longitud buscando los patrones `BTS`, `Nombre`, `Cell`, `Latitud`, `LAT`, `Longitud`, `LON`. Agrupa por nombre raíz promediando las coordenadas de las celdas del mismo sitio físico.
+
+    #### `buscar_coordenadas(df_cdr, col_nombre_celda)`
+
+    Realiza un LEFT JOIN entre el DataFrame de CDR y la base de celdas indexada.
+
+    ```python
+    def buscar_coordenadas(
+        self,
+        df_cdr: pd.DataFrame,
+        col_nombre_celda: str
+    ) -> pd.DataFrame:
+        ...
+    ```
+
+    - Rellena `latitud_n` y `longitud_w` donde estaban vacíos, sin sobreescribir coordenadas GPS nativas (Plan A).
+    - Imprime el número de registros ubicados exitosamente.
+  </Accordion>
+
+  <Accordion title="colombia_data.py — Inferencia geográfica por municipio">
+    Implementa el Plan C de geocodificación: inferir coordenadas a partir del nombre del municipio detectado en el texto de la celda, y asignar departamento y municipio a coordenadas conocidas.
+
+    ### `obtener_ubicacion_completa(lat, lon)`
+
+    Recibe coordenadas y devuelve el departamento y municipio más cercanos usando la fórmula de Haversine.
+
+    ```python
+    def obtener_ubicacion_completa(
+        lat: float,
+        lon: float
+    ) -> tuple[str, str]:
+        ...
+    ```
+
+    **Retorna:** `(departamento, municipio)` — por ejemplo: `("Antioquia", "Barbosa")`
+
+    La búsqueda se optimiza filtrando primero un recuadro de ±1° alrededor del punto antes de calcular distancias exactas.
+
+    ### `inferir_municipio_y_coords(nombre_celda)`
+
+    Busca el nombre de un municipio dentro del texto técnico de la celda.
+
+    ```python
+    def inferir_municipio_y_coords(
+        nombre_celda: str
+    ) -> tuple[str | None, float | None, float | None]:
+        ...
+    ```
+
+    **Retorna:** `(municipio, latitud, longitud)` si se encuentra coincidencia, o `(None, None, None)`.
+
+    ```text
+    Entrada:  "ANT.MEDELLIN-2"
+    Búsqueda: compara texto normalizado (sin tildes) con cada municipio de la BD
+    Salida:   ("Medellín", 6.244203, -75.581211)
+    ```
+
+    <Note>
+      Se ignoran municipios con nombres de menos de 4 caracteres para evitar falsos positivos (ej: "Ica", "Une").
+    </Note>
+
+    ### `calcular_distancia(lat1, lon1, lat2, lon2)`
+
+    Calcula la distancia en kilómetros entre dos puntos geográficos usando la fórmula de Haversine.
+
+    ```python
+    def calcular_distancia(
+        lat1: float, lon1: float,
+        lat2: float, lon2: float
+    ) -> float:
+        ...
+    ```
+  </Accordion>
+
+  <Accordion title="ftp_utils.py — Cliente FTP">
+    Gestiona la subida del informe completo a un servidor FTP con soporte TLS.
+
+    ### `subir_archivo_ftp(ftp_host, ftp_user, ftp_pass, carpeta_local, carpeta_remota)`
+
+    ```python
+    def subir_archivo_ftp(
+        ftp_host: str,
+        ftp_user: str,
+        ftp_pass: str,
+        carpeta_local: str,
+        carpeta_remota: str
+    ) -> bool:
+        ...
+    ```
+
+    | Parámetro | Descripción |
+    |---|---|
+    | `ftp_host` | Dominio o IP del servidor FTP |
+    | `ftp_user` | Usuario FTP |
+    | `ftp_pass` | Contraseña FTP |
+    | `carpeta_local` | Ruta local de la carpeta del informe a subir |
+    | `carpeta_remota` | Ruta relativa en el servidor (dentro de `public_html/`) |
+
+    **Retorna:** `True` si la subida fue exitosa, `False` si ocurrió algún error.
+
+    La conexión usa `FTP_TLS` (puerto 21) con `prot_p()` para activar el canal de datos cifrado. Crea las subcarpetas remotas si no existen.
+
+    ### `subir_directorio(ftp, local_path)`
+
+    Función interna que recorre el árbol de directorios local con `os.walk()` y sube cada archivo con `STOR`.
+  </Accordion>
+
+  <Accordion title="utils.py — Utilidades generales">
+    Funciones de soporte usadas transversalmente por todos los módulos.
+
+    ### `configurar_logs(text_widget=None)`
+
+    Configura el sistema de logging con hasta tres handlers simultáneos.
+
+    ```python
+    def configurar_logs(
+        text_widget: tk.Text | None = None
+    ) -> logging.Logger:
+        ...
+    ```
+
+    | Handler | Destino | Siempre activo |
+    |---|---|---|
+    | `FileHandler` | `logs/app.log` (UTF-8, modo append) | Sí |
+    | `StreamHandler` | `stdout` (consola) | Sí |
+    | `TextWidgetHandler` | Widget de texto Tkinter | Solo si se pasa `text_widget` |
+
+    Formato de cada entrada: `HH:MM:SS - LEVEL - mensaje`  
+    Nivel por defecto: `logging.INFO`
+
+    ### `resource_path(relative_path)`
+
+    Resuelve rutas a recursos estáticos de forma compatible tanto con el modo de desarrollo como con ejecutables generados por PyInstaller.
+
+    ```python
+    def resource_path(relative_path: str) -> str:
+        ...
+    ```
+
+    En desarrollo: resuelve relativo al directorio padre de `src/` (la raíz del proyecto).  
+    En PyInstaller: usa `sys._MEIPASS` (carpeta temporal del ejecutable).
+
+    ### Otras utilidades
+
+    ```python
+    def limpiar_texto(texto: str) -> str:
+        """Elimina caracteres especiales, conservando letras, números, @, puntos y espacios."""
+
+    def manejar_excepcion(error: Exception, logger=None) -> None:
+        """Imprime el error y lo registra en el logger si se proporciona."""
+
+    def convertir_a_entero(valor, valor_defecto: int = 0) -> int:
+        """Convierte a int de forma segura; maneja strings como '5.0'."""
+
+    def convertir_a_flotante(valor, valor_defecto: float = 0.0) -> float:
+        """Convierte a float de forma segura."""
+    ```
+  </Accordion>
+
+  <Accordion title="data_models.py — Modelos de datos">
+    Define las estructuras de datos mediante `dataclasses` de Python.
+
+    ### `Llamada`
+
+    Modelo que representa un registro CDR individual.
+
+    ```python
+    @dataclass
+    class Llamada:
+        originador:  str
+        receptor:    str
+        duracion:    int
+        fecha_hora:  datetime
+        latitud_n:   float = None
+        longitud_w:  float = None
+    ```
+
+    El método `__post_init__` realiza validaciones automáticas al instanciar:
+    - Convierte `fecha_hora` desde string (`"%Y-%m-%d %H:%M:%S"`) si es necesario.
+    - Convierte `duracion` a `int`.
+    - Valida y corrige coordenadas mediante `validar_coordenada()`.
+
+    #### `validar_coordenada(valor)`
+
+    Corrige errores de escala típicos en datos de Excel: si el valor absoluto supera 180, lo divide entre 10000.
+
+    ### `ResumenLlamadas`
+
+    Modelo para estadísticas generales del análisis.
+
+    ```python
+    @dataclass
+    class ResumenLlamadas:
+        total_llamadas:    int
+        total_numeros:     int
+        promedio_llamadas: float
+    ```
+  </Accordion>
+
+</AccordionGroup>

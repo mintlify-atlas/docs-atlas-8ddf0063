@@ -1,0 +1,252 @@
+---
+title: "Geocodificación multinivel"
+description: "Sistema de tres niveles para asignar coordenadas geográficas a cada registro CDR: GPS nativo, base de datos de celdas, e inferencia por municipio."
+---
+
+No todos los archivos CDR incluyen coordenadas GPS. Para garantizar la máxima cobertura geográfica posible, el sistema implementa un proceso de geocodificación en cascada con tres niveles de precisión descendente. Cada registro intenta el Plan A primero; si falla, cae al Plan B; y si ese también falla, intenta el Plan C.
+
+```
+Plan A: GPS Nativo     → Coordenadas exactas del archivo (latitud_n / longitud_w)
+         ↓ Si latitud_n es NaN
+Plan B: Base de Celdas → Lookup en celdas.csv por nombre de antena BTS
+         ↓ Si nombre_celda no coincide
+Plan C: Inferencia     → Detectar nombre de municipio en el texto de la celda
+```
+
+---
+
+## Plan A — GPS Nativo
+
+Las hojas de tipo `DATOS` en el Excel pueden incluir columnas de coordenadas directas. El sistema las mapea durante la carga:
+
+```python
+# excel_utils.py — cargar_excel_crudo
+rename_map = {
+    "latitud":  "latitud_n",   # Coordenada norte/sur
+    "longitud": "longitud_w"   # Coordenada este/oeste
+}
+```
+
+Antes de usar estas coordenadas, pasan por la función `corregir_coordenadas` que:
+
+1. Rechaza valores nulos, vacíos, `"0"`, `"?"` o `"nan"`
+2. Reemplaza comas por puntos decimales (`7,375060` → `7.375060`)
+3. Corrige órdenes de magnitud erróneos:
+
+```python
+if abs(val_f) > 180:
+    if abs(val_f) > 100000:
+        val_f /= 1000000    # 7375060 → 7.375060
+    else:
+        val_f /= 10000      # 73750 → 7.375
+```
+
+<Note>
+  Las coordenadas GPS nativas son las más precisas. Corresponden a la ubicación exacta reportada por la antena en el momento del evento de datos.
+</Note>
+
+---
+
+## Plan B — Base de Datos de Celdas
+
+Cuando un registro no tiene coordenadas GPS propias pero sí tiene un nombre de celda (columna `nombre_celda`), el sistema busca sus coordenadas en el archivo `celdas.csv` mediante la clase `CellGeocoder`.
+
+### Clase CellGeocoder
+
+```python
+# cell_geocoder.py
+class CellGeocoder:
+    def __init__(self, db_path):
+        self.db_path = db_path
+        self.df_sitios = None
+        self.cargar_base_datos()
+```
+
+#### Carga de la base de datos
+
+Al instanciar, se carga el archivo `celdas.csv`. El lector es tolerante a formatos mixtos:
+
+1. **Intento 1:** Separador punto y coma (`;`), codificación `latin-1`
+2. **Intento 2:** Separador coma (`,`), codificación `latin-1`
+
+Las columnas clave se detectan dinámicamente por nombre:
+
+```python
+col_nombre = next((c for c in df_temp.columns
+                   if "BTS" in c or "Nombre" in c or "Cell" in c), None)
+col_lat    = next((c for c in df_temp.columns
+                   if "Latitud" in c or "LAT" in c.upper()), None)
+col_lon    = next((c for c in df_temp.columns
+                   if "Longitud" in c or "LON" in c.upper()), None)
+```
+
+#### Normalización del nombre de sitio
+
+Las antenas BTS suelen tener sufijos técnicos que varían por sector o tecnología. El método `limpiar_nombre_sitio` los elimina para encontrar el nombre raíz del sitio físico:
+
+```python
+def limpiar_nombre_sitio(self, nombre):
+    """
+    Elimina sufijos técnicos (_LTE, _UMTS, _1, _A, _R1, etc.)
+    Ej: 'ANT.BARBOSA-2_R1' -> 'ANT.BARBOSA-2'
+    """
+    patron = r'_([A-Z0-9]{1,4}|LTE|UMTS|GSM)$'
+    nombre_limpio = re.sub(patron, '', nombre)
+    nombre_limpio = re.sub(patron, '', nombre_limpio)  # Segunda pasada para casos anidados
+    return nombre_limpio
+```
+
+Ejemplos de normalización:
+
+| Nombre original | Nombre raíz |
+|---|---|
+| `ANT.BARBOSA-2_R1` | `ANT.BARBOSA-2` |
+| `MED_CENTRO_LTE` | `MED_CENTRO` |
+| `BOGOTA_NORTE_UMTS_A` | `BOGOTA_NORTE` |
+| `CALI_SUR_1` | `CALI_SUR` |
+
+#### Agrupación por sitio físico
+
+Si un sitio tiene múltiples sectores (S1, S2, S3) en el CSV, el sistema promedia sus coordenadas para obtener el centroide del sitio:
+
+```python
+self.df_sitios = df_temp.groupby('site_root')[['lat', 'lon']].mean().reset_index()
+```
+
+#### Cruce con el CDR
+
+La búsqueda se realiza con un LEFT JOIN entre el DataFrame de llamadas y la tabla de sitios:
+
+```python
+def buscar_coordenadas(self, df_cdr, col_nombre_celda):
+    df_cdr['temp_root'] = df_cdr[col_nombre_celda].apply(self.limpiar_nombre_sitio)
+    df_merged = pd.merge(
+        df_cdr,
+        self.df_sitios,
+        left_on='temp_root',
+        right_on='site_root',
+        how='left'
+    )
+    # Rellena latitud_n/longitud_w solo donde están vacías
+    df_merged['latitud_n'] = df_merged['latitud_n'].fillna(df_merged['lat'])
+    df_merged['longitud_w'] = df_merged['longitud_w'].fillna(df_merged['lon'])
+```
+
+---
+
+## Plan C — Inferencia por Municipio
+
+Cuando no hay coincidencia en la base de celdas, el sistema intenta adivinar la ubicación leyendo el nombre del municipio directamente del texto del nombre de celda.
+
+Esta lógica reside en `colombia_data.py`:
+
+```python
+def inferir_municipio_y_coords(nombre_celda):
+    """
+    Intenta adivinar coordenadas buscando el nombre del municipio
+    dentro del texto de la celda.
+    Ej: "ANT.MEDELLIN-2" -> Encuentra "MEDELLIN" -> Devuelve coords de Medellín.
+    """
+    texto_norm = normalizar_texto(nombre_celda.upper().strip())
+
+    for _, row in _df_municipios.iterrows():
+        muni_norm = row['Muni_Norm']
+        if len(muni_norm) < 4: continue  # Evitar falsos positivos con nombres cortos
+        if muni_norm in texto_norm:
+            return row['Municipio'], row['Latitud'], row['Longitud']
+
+    return None, None, None
+```
+
+La función `normalizar_texto` elimina tildes antes de comparar, lo que permite encontrar `"MEDELLIN"` en el texto aunque el municipio en la base de datos sea `"Medellín"`:
+
+```python
+def normalizar_texto(texto):
+    """Quita tildes para comparar (BOGOTÁ -> BOGOTA)"""
+    s = unicodedata.normalize('NFD', texto)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    return s.upper().strip()
+```
+
+### Base de datos de municipios
+
+El archivo `static/db/municipios_colombia.csv` se carga al importar el módulo. Contiene todos los municipios del país con sus coordenadas centrales. El archivo usa:
+
+- Separador: `;`
+- Codificación: `utf-8-sig` (para manejar tildes correctamente)
+- Columnas: `Municipio`, `Departamento`, `Latitud`, `Longitud`
+
+<Info>
+  Los nombres cortos (menos de 4 caracteres) como `Une`, `Iza` o `Icá` se saltan intencionalmente en la búsqueda para evitar falsos positivos con subcadenas.
+</Info>
+
+---
+
+## Lógica de prioridad y cascada
+
+El proceso completo se ejecuta en `gui.py` durante la exportación, en este orden:
+
+<Steps>
+  <Step title="Coordenadas GPS nativas (Plan A)">
+    Si las columnas `latitud_n` y `longitud_w` tienen valores numéricos válidos tras la limpieza de `corregir_coordenadas`, se usan directamente. No hay lookup adicional.
+  </Step>
+
+  <Step title="Lookup en celdas.csv (Plan B)">
+    Para los registros donde `latitud_n` es `NaN` pero `nombre_celda` tiene valor, se llama a `CellGeocoder.buscar_coordenadas()`. El `fillna` solo escribe sobre los valores vacíos — no sobreescribe coordenadas ya presentes.
+  </Step>
+
+  <Step title="Inferencia por municipio (Plan C)">
+    Para los registros que aún no tienen coordenadas, se llama a `inferir_municipio_y_coords` con el `nombre_celda`. Si encuentra un municipio, se asignan las coordenadas del centroide municipal.
+  </Step>
+
+  <Step title="Sin geocodificación">
+    Si ningún plan tiene éxito, el registro permanece con `latitud_n = NaN`. Estos registros no aparecerán en los mapas pero sí en las tablas y gráficos estadísticos.
+  </Step>
+</Steps>
+
+---
+
+## Validación de rangos de coordenadas
+
+La función `_limpiar_coordenadas` en `geo_utils.py` aplica la validación final antes de renderizar cualquier mapa:
+
+```python
+def _limpiar_coordenadas(df):
+    df_clean["latitud_n"]  = pd.to_numeric(df_clean["latitud_n"],  errors='coerce')
+    df_clean["longitud_w"] = pd.to_numeric(df_clean["longitud_w"], errors='coerce')
+
+    # Filtrar coordenadas lógicas (rango mundial válido)
+    df_clean = df_clean[
+        (df_clean["latitud_n"]  >= -90)  & (df_clean["latitud_n"]  <= 90) &
+        (df_clean["longitud_w"] >= -180) & (df_clean["longitud_w"] <= 180)
+    ]
+```
+
+Para Colombia específicamente, los rangos esperados son:
+
+| Parámetro | Mínimo | Máximo | Referencia |
+|---|---|---|---|
+| Latitud | `-4.0°` | `12.5°` | Sur (Leticia) a Norte (La Guajira) |
+| Longitud | `-79.0°` | `-66.8°` | Oeste (Pacífico) a Este (Orinoquía) |
+
+<Warning>
+  Los registros con coordenadas fuera del rango mundial (`±90` lat, `±180` lon) son descartados silenciosamente por `_limpiar_coordenadas` y no aparecen en ningún mapa. Verifique los datos de origen si el mapa aparece vacío.
+</Warning>
+
+### Función auxiliar de geocodificación inversa
+
+Una vez que un punto tiene coordenadas, se puede obtener su municipio y departamento con `obtener_ubicacion_completa`:
+
+```python
+def obtener_ubicacion_completa(lat, lon):
+    """Recibe Lat/Lon y devuelve (Departamento, Municipio) del punto más cercano."""
+    # Optimización: buscar solo en radio ~100km (1 grado latitud)
+    df_cerca = _df_municipios[
+        (_df_municipios['Latitud'] > lat - 1) & (_df_municipios['Latitud'] < lat + 1) &
+        (_df_municipios['Longitud'] > lon - 1) & (_df_municipios['Longitud'] < lon + 1)
+    ]
+    # Fórmula de Haversine para distancia precisa
+    # Umbral de asignación: 30 km
+```
+
+El umbral de 30 km se usa como criterio de asignación: si el municipio más cercano está a más de 30 km, igual se retorna, pero en zonas rurales muy aisladas el resultado puede ser impreciso.

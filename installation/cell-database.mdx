@@ -1,0 +1,128 @@
+---
+title: "Base de datos de celdas"
+description: "Configura el archivo celdas.csv para habilitar la geocodificación exacta de antenas (Plan B) en el Analizador de Llamadas Pro."
+---
+
+La base de datos de celdas es un archivo CSV que contiene las coordenadas geográficas de cada antena de telefonía móvil. Cuando una sábana de llamadas incluye el nombre técnico de la antena pero no incluye coordenadas GPS, el sistema cruza ese nombre contra este archivo para obtener la ubicación exacta de cada registro.
+
+Este mecanismo corresponde al **Plan B** del sistema de geocodificación multinivel.
+
+---
+
+## Ubicación del archivo
+
+El archivo debe colocarse en la siguiente ruta dentro del proyecto:
+
+```
+coyprot_analisis_sabanas/
+└── static/
+    └── db/
+        └── celdas.csv      ← aquí
+```
+
+El sistema busca la base de datos al arrancar. Si el archivo existe, lo carga automáticamente y muestra en el log:
+
+```
+HH:MM:SS - INFO - Cargando base de datos de celdas desde: celdas.csv
+HH:MM:SS - INFO - Base de celdas indexada: N sitios únicos.
+```
+
+Si el archivo no existe, el log muestra una advertencia y la geocodificación por base de datos queda desactivada:
+
+```
+HH:MM:SS - WARNING - No se encontró celdas.csv. Geolocalización por DB desactivada.
+```
+
+---
+
+## Formato del archivo
+
+El archivo usa **punto y coma (`;`) como separador** y codificación `latin-1`. El sistema también acepta coma (`,`) como separador alternativo.
+
+### Columnas requeridas
+
+El sistema identifica las columnas de forma dinámica buscando palabras clave en los encabezados. Las tres columnas esenciales son:
+
+| Columna | Palabra clave buscada | Descripción |
+|---------|-----------------------|-------------|
+| Nombre de celda | `BTS`, `Nombre` o `Cell` en el encabezado | Nombre técnico de la antena |
+| Latitud | `Latitud` o `LAT` en el encabezado | Coordenada latitudinal decimal |
+| Longitud | `Longitud` o `LON` en el encabezado | Coordenada longitudinal decimal |
+
+<Warning>
+  Si el archivo no contiene columnas reconocibles para BTS Name, Latitud y Longitud, el geocodificador no se inicializa y muestra un error en el log indicando las columnas disponibles.
+</Warning>
+
+### Ejemplo de encabezado y filas
+
+```csv
+CID;Tipo;BTS Name;Direccion;Latitud;Gra;Min;Seg;Longitud;Gra;Min;Seg;Altura;Vector;Tilt;Region
+11;GSM;BOG.Colina_1;Carrera 138 No. 54 - 01. Torre 9;4,726722000;4;43;36,20;-74,066830000;-74;4;0,59;21;0;6;Oriente
+12;GSM;BOG.Colina_2;Carrera 138 No. 54 - 01. Torre 9;4,726722000;4;43;36,20;-74,066830000;-74;4;0,59;21;100;5;Oriente
+21;GSM;BOG.Cedritos_1;Carrera 25 No. 149A - 27;4,729380000;4;43;45,77;-74,036600000;-74;2;11,76;20;60;6;Oriente
+```
+
+<Info>
+  Las coordenadas pueden usar coma decimal (ej: `4,726722000`) o punto decimal (ej: `4.726722`). El sistema convierte automáticamente las comas a puntos antes de procesar.
+</Info>
+
+---
+
+## Cómo funciona el cruce de datos
+
+El módulo `src/cell_geocoder.py` implementa la lógica de cruce en dos fases:
+
+### 1. Normalización del nombre técnico
+
+Antes de comparar, el sistema limpia el nombre de la celda eliminando sufijos técnicos de sector y tecnología:
+
+```
+ANT.BARBOSA-2_R1   →   ANT.BARBOSA-2
+BOG.Colina_1_LTE   →   BOG.Colina
+MED.Centro_A_UMTS  →   MED.Centro
+```
+
+La expresión regular aplicada es `_([A-Z0-9]{1,4}|LTE|UMTS|GSM)$`, ejecutada dos veces para cubrir sufijos anidados.
+
+### 2. Agrupación de sectores
+
+Cuando un sitio físico tiene múltiples celdas (sectores `_1`, `_2`, `_3` o `_A`, `_B`, `_C`), el sistema agrupa todas las filas por nombre raíz y promedia las coordenadas. Esto garantiza que todos los sectores de una misma torre queden asignados a un único punto geográfico representativo.
+
+### 3. Cruce con la sábana (LEFT JOIN)
+
+Se realiza un `merge` entre la sábana de llamadas y la base de datos usando el nombre raíz como llave. Los registros que encuentran coincidencia reciben las columnas `latitud_n` y `longitud_w`. Los que no encuentran coincidencia quedan con coordenadas vacías y pasan al Plan C (inferencia por municipio).
+
+---
+
+## Qué ocurre si el archivo no está presente
+
+El sistema continúa funcionando con las otras estrategias de geocodificación:
+
+<AccordionGroup>
+  <Accordion title="Plan A: GPS nativo">
+    Si la sábana incluye columnas de latitud y longitud con valores, el sistema las usa directamente sin necesitar la base de datos de celdas.
+  </Accordion>
+
+  <Accordion title="Plan C: Inferencia por municipio">
+    Si no hay GPS ni base de datos de celdas, el sistema intenta detectar el nombre de un municipio colombiano dentro del campo `nombre_celda` (ej: `ANT.BARBOSA` → municipio Barbosa, Antioquia) y asigna las coordenadas del centroide del municipio.
+
+    El sistema muestra un diálogo de confirmación antes de aplicar esta inferencia:
+
+    > *El sistema detectó N registros sin ubicación exacta. ¿Desea intentar ubicar las llamadas basándose en el nombre del municipio?*
+
+    Los centroides municipales provienen de `static/db/municipios_colombia.csv`, que sí está incluido en el repositorio.
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  Sin ninguna forma de geocodificación, el informe se genera igualmente con todos los gráficos estadísticos y tablas, pero los tres mapas interactivos no se incluyen.
+</Note>
+
+---
+
+## Recomendaciones para mantener el archivo
+
+- Solicita el archivo maestro de antenas actualizado al operador de telecomunicaciones o a la entidad competente.
+- Si recibes el archivo en formato diferente (Excel, JSON, etc.), conviértelo a CSV separado por punto y coma antes de colocarlo en `static/db/`.
+- Verifica que las columnas de nombre de antena, latitud y longitud contengan una de las palabras clave reconocidas (`BTS`, `Latitud`, `Longitud`) para que el sistema las detecte automáticamente.
+- Mantén la codificación `latin-1` si el archivo contiene caracteres especiales como tildes o eñes en los nombres de dirección.

@@ -1,0 +1,220 @@
+---
+title: "Gráficos y estadísticas"
+description: "Gráficos estadísticos generados con Matplotlib y Seaborn, más datos JSON interactivos para dashboards en el informe HTML."
+---
+
+El módulo `graphics_utils.py` genera tres tipos de gráficos PNG que se incrustan en el informe HTML. Además, `report_generator.py` produce el archivo `call_data.js`, que alimenta los gráficos interactivos con JavaScript en el informe.
+
+---
+
+## Gráfico de tendencia horaria
+
+Función: `generar_grafico_horario_llamadas(datos, output_path)`
+
+Genera un gráfico de línea que muestra la cantidad de eventos por hora del día (0–23 horas), útil para identificar patrones de actividad (madrugada, horario laboral, nocturno).
+
+```python
+def generar_grafico_horario_llamadas(datos, output_path):
+    df["hora"] = df["fecha_hora"].dt.hour
+    conteo = df["hora"].value_counts().sort_index().reindex(range(24), fill_value=0)
+
+    sns.lineplot(x=conteo.index, y=conteo.values, marker="o", color="dodgerblue", ax=ax)
+    ax.set_title("Frecuencia por Hora", fontsize=14)
+    ax.set_xticks(range(24))  # Eje X siempre muestra las 24 horas
+    ax.grid(True, linestyle='--', alpha=0.6)
+```
+
+**Características:**
+
+- Eje X: horas 0–23, siempre con las 24 posiciones marcadas
+- Eje Y: cantidad de eventos (llamadas o datos)
+- Marcadores circulares en cada punto horario
+- Cuadrícula punteada con 60% de opacidad
+- Tamaño de figura: 12×6 pulgadas, 100 DPI
+
+<Note>
+  Las horas sin ningún evento aparecen como `0` en el gráfico gracias al `reindex(range(24), fill_value=0)`. El gráfico nunca tiene huecos en el eje X.
+</Note>
+
+---
+
+## Top 10 contactos
+
+Función: `generar_grafico_top_llamadas(datos, columna, titulo, output_path, nombres_asignados, ascendente)`
+
+Genera un gráfico de barras horizontales con los 10 números más frecuentes en la columna indicada. Se puede usar para entrantes (columna `originador`) o salientes (columna `receptor`).
+
+```python
+def generar_grafico_top_llamadas(datos, columna, titulo, output_path,
+                                  nombres_asignados=None, ascendente=False):
+    conteo = datos[columna].astype(str).value_counts()
+    if ascendente:
+        conteo = conteo.sort_values(ascending=True)
+    else:
+        conteo = conteo.sort_values(ascending=False)  # Más frecuente arriba (defecto)
+    top_datos = conteo.head(10)
+```
+
+### Etiquetas con alias
+
+Si el usuario ha asignado nombres a los números, la etiqueta de cada barra muestra ambos:
+
+```python
+for num_str in top_datos.index:
+    nombre = nombres_asignados.get(num_str) if nombres_asignados else None
+    etiquetas.append(f"{num_str}\n({nombre})" if nombre else num_str)
+```
+
+Ejemplo de etiqueta resultante:
+```
+3001234567
+(Juan Pérez)
+```
+
+**Características:**
+
+- Paleta de colores: `tab10` (10 colores cualitativos distintos)
+- Rotación de etiquetas del eje X: 45°, alineadas a la derecha
+- Tamaño de figura: 12×7 pulgadas, 100 DPI
+- Guardado con `bbox_inches='tight'` para no cortar etiquetas rotadas
+
+---
+
+## Top ubicaciones
+
+Función: `generar_grafico_top_ubicacion(datos, col_numero, col_ubicacion, titulo, output_path, nombres_asignados)`
+
+Es el gráfico más rico en información. Para cada uno de los 10 números más frecuentes, calcula la **ubicación más común** (moda de la columna `nombre_celda`) y la muestra debajo del número en la barra.
+
+```python
+def generar_grafico_top_ubicacion(datos, col_numero, col_ubicacion, titulo,
+                                   output_path, nombres_asignados=None):
+    for numero in conteo.index:
+        sub_df = datos[datos[col_numero].astype(str) == numero]
+        modas = sub_df[col_ubicacion].dropna().mode()
+        if not modas.empty:
+            raw_loc = str(modas[0]).upper()
+```
+
+### Limpieza visual de la ubicación
+
+El nombre técnico de la celda se simplifica para legibilidad en el gráfico:
+
+```python
+# 1. Si tiene punto (ANT.BARBOSA), tomar la segunda parte
+if '.' in raw_loc:
+    raw_loc = raw_loc.split('.')[1]
+
+# 2. Eliminar sufijos técnicos después de guiones o guiones bajos
+# Ej: BARBOSA-2 -> BARBOSA
+raw_loc = raw_loc.split('-')[0].split('_')[0]
+```
+
+Ejemplos de transformación:
+
+| Nombre celda original | Ubicación en gráfico |
+|---|---|
+| `ANT.BARBOSA-2_R1` | `BARBOSA` |
+| `MED_CENTRO_LTE` | `MED` |
+| `CALI.NORTE-3` | `NORTE` |
+| `BOGOTA` | `BOGOTA` |
+
+### Etiqueta de 3 líneas
+
+Cada barra tiene una etiqueta construida en tres líneas:
+
+```python
+lbl = f"{numero}"             # Línea 1: Número telefónico
+if alias: lbl += f"\n({alias})"  # Línea 2: Alias (si existe)
+lbl += f"\n📍 {ubicacion_str}"   # Línea 3: Municipio/Ubicación
+```
+
+**Características:**
+
+- Paleta de colores: `viridis` (gradiente, diferenciado del Top 10 contactos)
+- Altura de figura aumentada: 12×8 pulgadas (para acomodar etiquetas de 3 líneas)
+- Etiqueta del eje Y: `"Cantidad de Llamadas"`
+- Fuente del eje X: 8.5pt (reducida para que quepan las etiquetas largas)
+
+---
+
+## Datos interactivos JSON (`call_data.js`)
+
+Función: `generar_datos_llamadas_json(df, output_path, nombres_asignados)`
+
+Genera el archivo `call_data.js` que alimenta los gráficos interactivos JavaScript del informe HTML. El archivo exporta una constante global `CALL_DATA` indexada por número de teléfono.
+
+```python
+def generar_datos_llamadas_json(df, output_path, nombres_asignados=None):
+    # FILTRO: Excluir filas de tipo 'DATOS' — solo llamadas telefónicas
+    mask_datos = df['tipo_llamada'].astype(str).str.upper().str.contains('DATO')
+    df_llamadas = df[~mask_datos].copy()
+```
+
+### Estructura del archivo generado
+
+```javascript
+// output/<nombre>/data/call_data.js
+const CALL_DATA = {
+    "3001234567 (Juan Pérez)": [
+        {
+            "numero": "3001234567 (Juan Pérez)",
+            "fecha_hora": "2025-10-08T14:32:51",
+            "hora": 14,
+            "tipo_llamada": "entrante",
+            "latitud": 6.251234,
+            "longitud": -75.563421
+        },
+        // ... más llamadas del mismo número
+    ],
+    "3109876543": [
+        // ...
+    ]
+};
+```
+
+### Lógica de clave por número
+
+Para llamadas salientes, la clave del objeto es el **receptor**. Para el resto de tipos, es el **originador**:
+
+```python
+numero_clave = receptor if tipo == "saliente" else originador
+numero_mostrar = obtener_nombre_mostrado(numero_clave, nombres_asignados)
+```
+
+Si el número tiene alias asignado, la clave incluye el alias: `"3001234567 (Juan Pérez)"`.
+
+### Coordenadas en el JSON
+
+Si las columnas `latitud_n` / `longitud_w` están presentes y no son `NaN`, se incluyen como `latitud` y `longitud` en cada entrada. Esto habilita los **tooltips con enlace a Google Maps** en el informe HTML:
+
+```python
+lat = row["latitud_n"] if tiene_coords and pd.notna(row["latitud_n"]) else None
+lon = row["longitud_w"] if tiene_coords and pd.notna(row["longitud_w"]) else None
+```
+
+<Tip>
+  Cuando `latitud` y `longitud` no son `null` en el JSON, el informe HTML genera automáticamente un enlace a `https://www.google.com/maps?q=<lat>,<lon>` en el tooltip de esa llamada.
+</Tip>
+
+---
+
+## Estructura de archivos de salida
+
+Todos los gráficos se guardan en la subcarpeta `graphics/` del directorio del informe:
+
+```
+output/<nombre_informe>/
+├── graphics/
+│   ├── grafico_horario.png         ← Tendencia horaria
+│   ├── top_entrantes.png           ← Top 10 números entrantes
+│   ├── top_salientes.png           ← Top 10 números salientes
+│   ├── top_ubicacion_entr.png      ← Top ubicaciones entrantes
+│   └── top_ubicacion_sal.png       ← Top ubicaciones salientes
+└── data/
+    └── call_data.js                ← Datos JSON para gráficos interactivos
+```
+
+<Note>
+  Los gráficos PNG se generan a **100 DPI**. Para todos los gráficos, si el DataFrame de entrada está vacío o la columna requerida no existe, la función retorna `None` silenciosamente sin generar el archivo. El informe HTML maneja esta ausencia mostrando el espacio en blanco.
+</Note>

@@ -1,0 +1,230 @@
+---
+title: "Configuración"
+description: "Variables de entorno, parámetros del sistema, base de datos de celdas y estructura de recursos estáticos."
+---
+
+La configuración del sistema se gestiona principalmente a través de un archivo `.env` en la raíz del proyecto. Nunca debes incluir credenciales en el código fuente.
+
+## Variables de entorno (`.env`)
+
+Copia el archivo `.env.example` a `.env` y completa los valores:
+
+```bash
+cp .env.example .env
+```
+
+Luego edita `.env`:
+
+```bash
+# Credenciales FTP
+# IMPORTANTE: nunca comitees este archivo con valores reales al repositorio.
+FTP_HOST=tu_dominio.com
+FTP_USER=tu_usuario_ftp
+FTP_PASS=tu_contraseña_ftp
+FTP_PUBLIC_HTML=public_html
+
+# Nivel de logs: DEBUG, INFO, WARNING, ERROR
+LOG_LEVEL=INFO
+
+# Radio máximo en km para asignar municipio más cercano (geocodificación)
+GEO_PROXIMITY_KM=50
+```
+
+### Descripción de variables
+
+<AccordionGroup>
+  <Accordion title="FTP_HOST">
+    **Tipo:** `str` | **Por defecto:** `""` (vacío)
+
+    Dominio o dirección IP del servidor FTP al que se subirán los informes. Si está vacío, el botón de subida FTP en la interfaz queda desactivado.
+
+    ```text
+    FTP_HOST=informes.miempresa.com
+    ```
+  </Accordion>
+
+  <Accordion title="FTP_USER">
+    **Tipo:** `str` | **Por defecto:** `""` (vacío)
+
+    Nombre de usuario FTP. Se combina con `FTP_HOST` y `FTP_PASS` para verificar si el FTP está configurado mediante `Settings.ftp_configured()`.
+  </Accordion>
+
+  <Accordion title="FTP_PASS">
+    **Tipo:** `str` | **Por defecto:** `""` (vacío)
+
+    Contraseña FTP. Se usa en la conexión `FTP_TLS` con `prot_p()` (canal de datos cifrado).
+
+    <Warning>
+      Nunca versiones el archivo `.env` con credenciales reales. Agrega `.env` a tu `.gitignore`.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="FTP_PUBLIC_HTML">
+    **Tipo:** `str` | **Por defecto:** `"public_html"`
+
+    Nombre del directorio raíz del servidor web en el servidor FTP. La función `subir_archivo_ftp()` navega primero a este directorio antes de crear la carpeta del informe.
+  </Accordion>
+
+  <Accordion title="LOG_LEVEL">
+    **Tipo:** `str` | **Por defecto:** `"INFO"`
+
+    Nivel mínimo de mensajes que se escriben en `logs/app.log` y se muestran en consola. Valores aceptados: `DEBUG`, `INFO`, `WARNING`, `ERROR`.
+
+    Usa `DEBUG` durante el desarrollo para ver trazas detalladas del parseo de fechas, la geocodificación y la generación de mapas.
+
+    ```bash
+    LOG_LEVEL=DEBUG
+    ```
+  </Accordion>
+
+  <Accordion title="GEO_PROXIMITY_KM">
+    **Tipo:** `float` | **Por defecto:** `50`
+
+    Radio máximo en kilómetros para considerar que un municipio es "cercano" a unas coordenadas dadas. Afecta exclusivamente a la función `obtener_ubicacion_completa()` en `colombia_data.py`.
+
+    Si la distancia al municipio más cercano supera este valor, el campo de municipio se etiqueta igualmente con el más cercano encontrado (comportamiento actual del código).
+  </Accordion>
+</AccordionGroup>
+
+## Configuración del sistema (`src/config/settings.py`)
+
+La clase `Settings` carga las variables de entorno y define las rutas absolutas de todos los recursos del sistema.
+
+```python
+class Settings:
+    # Directorios
+    app_dir:              Path = APP_DIR
+    output_dir:           Path = APP_DIR / "output"
+    static_dir:           Path = APP_DIR / "static"
+    templates_dir:        Path = APP_DIR / "templates"
+    logs_dir:             Path = APP_DIR / "logs"
+
+    # Recursos estáticos
+    logo_path:            Path = APP_DIR / "static" / "assets_img" / "logo.png"
+    info_icon_path:       Path = APP_DIR / "static" / "assets_img" / "info.png"
+    cell_db_path:         Path = APP_DIR / "static" / "db" / "celdas.csv"
+    municipalities_db_path: Path = APP_DIR / "static" / "db" / "municipios_colombia.csv"
+
+    # FTP (solo desde variables de entorno)
+    ftp_host:        str = os.environ.get("FTP_HOST", "")
+    ftp_user:        str = os.environ.get("FTP_USER", "")
+    ftp_pass:        str = os.environ.get("FTP_PASS", "")
+    ftp_public_html: str = os.environ.get("FTP_PUBLIC_HTML", "public_html")
+
+    # Aplicación
+    app_title:    str   = "Analizador de Llamadas Pro v3.0"
+    log_level:    str   = os.environ.get("LOG_LEVEL", "INFO")
+    log_filename: str   = "app.log"
+
+    # Geocodificación
+    geo_proximity_km: float = float(os.environ.get("GEO_PROXIMITY_KM", "50"))
+```
+
+<Note>
+  `Settings` es un Singleton de configuración. Se accede mediante la instancia global `settings` importándola desde `src/config/settings.py`.
+</Note>
+
+## Base de datos de celdas (`celdas.csv`)
+
+El archivo `static/db/celdas.csv` es la base de datos de antenas telefónicas que habilita el Plan B de geocodificación.
+
+### Ubicación
+
+```text
+coyprot_analisis_sabanas/
+└── static/
+    └── db/
+        └── celdas.csv
+```
+
+### Formato esperado
+
+El geocodificador detecta las columnas automáticamente buscando estos patrones:
+
+| Columna buscada | Patrones aceptados en el nombre |
+|---|---|
+| Nombre de celda | `BTS`, `Nombre`, `Cell` |
+| Latitud | `Latitud`, `LAT` |
+| Longitud | `Longitud`, `LON` |
+
+Soporta dos separadores: `;` (punto y coma) y `,` (coma). La codificación debe ser `latin-1`.
+
+```text
+BTS_Name;Latitud;Longitud
+ANT.BARBOSA-2_S1;6.188500;-75.331800
+ANT.BARBOSA-2_S2;6.188520;-75.331790
+ANT.MEDELLIN-1_LTE;6.244203;-75.581211
+```
+
+<Info>
+  Cuando hay varias celdas del mismo sitio físico (ej: `_S1`, `_S2`, `_S3`), el sistema promedia sus coordenadas para obtener la posición del sitio raíz.
+</Info>
+
+### Comportamiento sin el archivo
+
+Si `celdas.csv` no existe, el geocodificador muestra una advertencia y desactiva el Plan B silenciosamente. La aplicación continúa funcionando usando GPS nativo (Plan A) o inferencia por municipio (Plan C).
+
+## Base de datos geográfica (`municipios_colombia.csv`)
+
+Ubicada en `static/db/municipios_colombia.csv`, contiene las coordenadas del centroide de cada municipio de Colombia.
+
+### Formato
+
+```text
+Departamento;Municipio;Latitud;Longitud
+Antioquia;Barbosa;6.188500;-75.331800
+Antioquia;Medellín;6.244203;-75.581211
+Cundinamarca;Bogotá;4.710989;-74.072092
+```
+
+- Separador: `;`
+- Codificación: `utf-8-sig` (BOM incluido)
+
+## Configuración del logging
+
+| Parámetro | Valor |
+|---|---|
+| Archivo de log | `logs/app.log` |
+| Modo de apertura | `append` — se acumula entre ejecuciones |
+| Codificación | `utf-8` |
+| Formato | `HH:MM:SS - LEVEL - mensaje` |
+| Nivel por defecto | `INFO` |
+| Handler adicional | Widget de texto Tkinter (solo en modo GUI) |
+
+El directorio `logs/` se crea automáticamente si no existe al iniciar la aplicación.
+
+## Estructura de recursos estáticos
+
+```text
+static/
+├── assets_img/
+│   ├── logo.png        # Logo corporativo Coyprot (incluido en el informe si se activa "Incluir Logos")
+│   └── info.png        # Icono de información usado en la interfaz gráfica
+├── assets_js/
+│   ├── interactive_charts.js   # Lógica de los gráficos interactivos del reporte HTML
+│   └── interactive_maps.js     # Lógica de los mapas interactivos del reporte HTML
+└── db/
+    ├── celdas.csv              # Base de datos de antenas (Plan B de geocodificación)
+    └── municipios_colombia.csv # Centroides de municipios (Plan C y etiquetado geográfico)
+```
+
+Al generar un informe, el sistema copia `assets_js/` y `assets_img/` dentro del directorio de salida (`output/<nombre>/static/`) para garantizar que el HTML funcione sin necesidad de acceder al directorio `static/` original.
+
+## Parámetros de mapas y gráficos (`constants.py`)
+
+```python
+# Mapas de calor
+MAP_HEATMAP_RADIUS: Final[int] = 15   # Radio en píxeles de cada punto de calor
+MAP_HEATMAP_BLUR:   Final[int] = 20   # Difuminado del punto de calor
+
+# Gráficos
+TOP_N_CALLS:  Final[int] = 5    # Número de entradas en el resumen de top llamadas
+TOP_N_CHART:  Final[int] = 10   # Barras mostradas en los gráficos de Top N
+CHART_DPI:    Final[int] = 100  # Resolución de las imágenes PNG exportadas
+
+# Interfaz gráfica
+GUI_THEME:    Final[str] = "adapta"   # Tema de ttkthemes
+GUI_GEOMETRY: Final[str] = "1000x800"
+GUI_MIN_SIZE: Final[tuple] = (900, 700)
+QUEUE_POLL_MS: Final[int] = 100       # Intervalo de sondeo de la cola de tareas (ms)
+```

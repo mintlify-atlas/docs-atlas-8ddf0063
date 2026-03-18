@@ -1,97 +1,108 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Coyprot — Analizador de Llamadas Pro"
+description: "Herramienta avanzada para el análisis forense de registros de detalle de llamadas (CDR), geolocalización multinivel y generación de informes interactivos."
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Inicio Rápido" icon="rocket" href="/quickstart">
+    Instala y genera tu primer informe en menos de 10 minutos.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Guía de Uso" icon="book-open" href="/guides/loading-data">
+    Aprende a cargar sábanas, mapear columnas y enriquecer los datos.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Funcionalidades" icon="chart-line" href="/features/data-processing">
+    Explora el procesamiento de datos, geocodificación y mapas interactivos.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Referencia de Módulos" icon="code" href="/reference/modules">
+    Documentación técnica de todos los módulos Python del proyecto.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## ¿Qué es el Analizador de Llamadas Pro?
 
-Everything you need to create world-class documentation.
+El **Analizador de Llamadas Pro** (Coyprot Analysis) es una herramienta de escritorio para análisis forense de registros de detalle de llamadas (CDR). Permite a investigadores y analistas de seguridad procesar sábanas de llamadas en formato Excel o CSV, geolocalizar antenas celulares y generar informes HTML interactivos listos para compartir.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<Info>
+  Esta herramienta fue desarrollada para **Coyprot**, empresa especializada en análisis de seguridad e inteligencia.
+</Info>
 
-## Need inspiration?
+## Capacidades principales
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={3}>
+  <Card title="Procesamiento de datos" icon="table">
+    Carga sábanas Excel/CSV con mapeo inteligente de columnas y normalización automática de números telefónicos.
+  </Card>
+  <Card title="Geocodificación multinivel" icon="location-dot">
+    GPS nativo, base de datos de celdas y fallback por inferencia de municipio colombiano.
+  </Card>
+  <Card title="Mapas interactivos" icon="map">
+    Genera mapas de clusters, rutas cronológicas y mapas de calor con Folium.
+  </Card>
+  <Card title="Dashboard estadístico" icon="chart-bar">
+    Gráficos animados de tendencias horarias, Top 10 y distribución de ubicaciones.
+  </Card>
+  <Card title="Gestión documental" icon="file-pdf">
+    Adjunta PDFs categorizados (Financiero, Judicial, Vehículos, etc.) al informe final.
+  </Card>
+  <Card title="Exportación y FTP" icon="upload">
+    Genera informes HTML portables y súbelos automáticamente por FTP.
+  </Card>
+</CardGroup>
+
+## Flujo de trabajo
+
+<Steps>
+  <Step title="Carga la sábana de llamadas">
+    Selecciona tu archivo Excel o CSV con el historial de llamadas del objetivo.
+  </Step>
+  <Step title="Mapea las columnas">
+    El asistente gráfico te ayuda a relacionar cada columna con los campos estándar del sistema.
+  </Step>
+  <Step title="Enriquece los datos">
+    Asigna alias a números clave, agrega datos del caso y adjunta documentos PDF.
+  </Step>
+  <Step title="Genera y exporta">
+    Con un clic, el sistema produce un informe HTML completo con mapas, gráficos y documentos adjuntos.
+  </Step>
+</Steps>
+
+## Modos de ejecución
+
+<Tabs>
+  <Tab title="Interfaz Gráfica (recomendado)">
+    Inicia la aplicación con ventanas visuales:
+
+    ```bash
+    python src/gui.py
+    ```
+
+    La interfaz Tkinter ofrece un flujo guiado paso a paso para cargar datos, asignar nombres, gestionar adjuntos y exportar el informe.
+  </Tab>
+  <Tab title="Línea de Comandos">
+    Para ejecuciones automatizadas o integración en scripts:
+
+    ```bash
+    python run.py
+    ```
+
+    También puedes ejecutar directamente desde `src/`:
+
+    ```bash
+    python src/main.py
+    ```
+  </Tab>
+</Tabs>
+
+## Requisitos del sistema
+
+| Componente | Versión mínima |
+|-----------|---------------|
+| Python | 3.9+ |
+| Sistema Operativo | Windows 10/11, macOS, Linux |
+| pandas | 2.0.0+ |
+| folium | 0.15.0+ |
+| plotly | 5.18.0+ |
+
+<Tip>
+  Se recomienda usar un entorno virtual Python para aislar las dependencias del proyecto.
+</Tip>

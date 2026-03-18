@@ -1,0 +1,178 @@
+---
+title: "Subida por FTP"
+description: "Carga automática del informe generado a un servidor web mediante FTP con TLS, con generación de URL pública para compartir."
+---
+
+Una vez generado el informe HTML, la herramienta puede subir automáticamente toda la carpeta del informe al servidor de Coyprot mediante FTP seguro (FTP con TLS), y generar una URL pública lista para compartir.
+
+---
+
+## Configuración FTP
+
+Las credenciales y parámetros del servidor están definidos como constantes en `gui.py`:
+
+```python
+# gui.py
+FTP_HOST = "plcoyprot.com"
+FTP_USER = "plcoypro"
+FTP_PASS = "181955Danilo?"
+```
+
+La conexión siempre se realiza al **puerto 21** (FTP estándar), con TLS activado mediante `FTP_TLS.prot_p()`:
+
+```python
+# ftp_utils.py
+def subir_archivo_ftp(ftp_host, ftp_user, ftp_pass, carpeta_local, carpeta_remota):
+    ftps = FTP_TLS()
+    ftps.connect(ftp_host, 21)
+    ftps.login(ftp_user, ftp_pass)
+    ftps.prot_p()   # Activa protección de datos (TLS sobre el canal de datos)
+    ftps.cwd("public_html")
+```
+
+<Warning>
+  Las credenciales FTP están embebidas en el código fuente. No comparta el ejecutable de la herramienta con personas no autorizadas. Esta configuración está diseñada para uso interno del equipo Coyprot.
+</Warning>
+
+---
+
+## Proceso de subida
+
+La función `subir_archivo_ftp` sube recursivamente el directorio completo del informe al servidor.
+
+<Steps>
+  <Step title="Conexión TLS">
+    Se establece conexión al host `plcoyprot.com:21` con `FTP_TLS` y se activa el cifrado del canal de datos con `prot_p()`.
+  </Step>
+
+  <Step title="Navegación al directorio raíz">
+    El sistema entra automáticamente a `public_html/` en el servidor, que es la raíz web pública.
+  </Step>
+
+  <Step title="Creación de la carpeta del informe">
+    Se crea (o reutiliza si ya existe) la carpeta con el nombre del informe dentro de `public_html/`. El nombre es el mismo que se usó al generar el informe en la GUI.
+
+    ```python
+    for subdir in carpeta_remota.strip("/").split("/"):
+        if subdir not in ftps.nlst():
+            ftps.mkd(subdir)
+        ftps.cwd(subdir)
+    ```
+  </Step>
+
+  <Step title="Subida recursiva de archivos">
+    La función `subir_directorio` recorre la carpeta local con `os.walk` y sube todos los archivos manteniendo la estructura de subdirectorios:
+
+    ```python
+    def subir_directorio(ftp, local_path):
+        for root, dirs, files in os.walk(base_dir):
+            # Crear subdirectorios en el servidor si no existen
+            for file in files:
+                with open(local_file, "rb") as f:
+                    ftp.storbinary(f"STOR {file}", f)
+    ```
+  </Step>
+
+  <Step title="Cierre de conexión">
+    Tras subir todos los archivos, se llama a `ftps.quit()` para cerrar la sesión limpiamente.
+  </Step>
+</Steps>
+
+### Archivos subidos
+
+Se sube el directorio completo del informe tal como fue generado localmente:
+
+```
+public_html/<nombre_informe>/
+├── reports/
+│   └── informe_llamadas.html
+├── maps/
+│   ├── mapa_agrupado.html
+│   ├── mapa_calor.html
+│   └── mapa_recorrido.html      (si hay datos de internet)
+├── graphics/
+│   ├── grafico_horario.png
+│   ├── top_entrantes.png
+│   └── ...
+├── data/
+│   └── call_data.js
+└── static/
+    ├── assets_js/
+    └── assets_img/
+```
+
+---
+
+## URL generada
+
+Tras una subida exitosa, la herramienta construye y muestra la URL pública del informe:
+
+```python
+# gui.py — tras subida exitosa
+url = f"https://{FTP_HOST}/{name}/reports/informe_llamadas.html"
+# Resultado: https://plcoyprot.com/<nombre_informe>/reports/informe_llamadas.html
+```
+
+Ejemplo con un informe llamado `caso_2025_001`:
+
+```
+https://plcoyprot.com/caso_2025_001/reports/informe_llamadas.html
+```
+
+Esta URL se puede abrir directamente en cualquier navegador sin instalar la herramienta. El informe es completamente autocontenido: los mapas, gráficos y datos JavaScript se referencian con rutas relativas.
+
+<Tip>
+  El nombre del informe se especifica en la GUI antes de generar. Use un nombre descriptivo (ej: `caso_homicidio_Medellin_oct25`) para que la URL sea identificable y no colisione con otros informes en el servidor.
+</Tip>
+
+---
+
+## Habilitar o deshabilitar en la GUI
+
+La subida FTP es **opcional** y está desactivada por defecto. Se controla mediante un checkbox en la sección de exportación:
+
+```python
+# gui.py — inicialización del checkbox
+self.subir_ftp = tk.BooleanVar(value=False)  # Desactivado por defecto
+
+# Renderizado en la interfaz
+ttk.Checkbutton(
+    f_chk,
+    text="Subir a FTP",
+    variable=self.subir_ftp
+).pack(side="left", padx=10)
+```
+
+Al hacer clic en **Generar y Exportar Informe**, si el checkbox está marcado:
+
+```python
+# gui.py — proceso de exportación
+if self.subir_ftp.get():
+    ok = subir_archivo_ftp(FTP_HOST, FTP_USER, FTP_PASS, base_dir, name)
+    if ok:
+        url = f"https://{FTP_HOST}/{name}/reports/informe_llamadas.html"
+```
+
+Si la subida falla (sin conexión, credenciales inválidas, etc.), se muestra un mensaje de error en el log de la GUI pero el informe local ya está guardado correctamente.
+
+---
+
+## Consideraciones de seguridad
+
+<AccordionGroup>
+  <Accordion title="Cifrado en tránsito">
+    La conexión usa `FTP_TLS` de la librería estándar `ftplib`, que implementa FTPS explícito. El método `prot_p()` activa el cifrado TLS sobre el canal de datos (no solo el canal de control). Los archivos viajan cifrados entre la máquina local y el servidor.
+  </Accordion>
+
+  <Accordion title="Credenciales embebidas">
+    Las credenciales (`FTP_HOST`, `FTP_USER`, `FTP_PASS`) están en texto plano en `gui.py`. Esto implica que cualquiera con acceso al código fuente o que descompile el ejecutable puede obtenerlas. El ejecutable no debe distribuirse fuera del equipo autorizado.
+  </Accordion>
+
+  <Accordion title="Sobreescritura de informes">
+    Si se sube un informe con el mismo nombre que uno existente en el servidor, los archivos se sobreescriben silenciosamente. No existe versionado automático. Use nombres únicos (ej: incluyendo fecha) para preservar informes anteriores.
+  </Accordion>
+
+  <Accordion title="Acceso público a los informes">
+    Los informes subidos son **públicamente accesibles** mediante la URL generada — no hay autenticación web. No suba informes con información sensible a menos que se acepte este modelo de acceso. El servidor `plcoyprot.com` es de uso exclusivo del equipo Coyprot.
+  </Accordion>
+</AccordionGroup>

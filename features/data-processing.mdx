@@ -1,0 +1,221 @@
+---
+title: "Procesamiento de datos"
+description: "Cómo se cargan, limpian y normalizan archivos Excel/CSV con registros de llamadas (CDR) para análisis forense."
+---
+
+El procesamiento de datos es el primer paso del análisis forense. El sistema toma un archivo Excel (.xlsx) con registros de detalle de llamadas (CDR) y lo convierte en un DataFrame limpio y estandarizado, listo para geocodificar, graficar y reportar.
+
+## Carga de archivos
+
+La función `cargar_excel_crudo` en `excel_utils.py` es el punto de entrada principal. Abre el archivo Excel e inspecciona todas sus hojas de manera automática, aplicando una lógica de detección por nombre:
+
+```python
+def cargar_excel_crudo(file_path):
+    """
+    Lee el Excel buscando hojas de 'entrantes', 'salientes' Y 'DATOS'.
+    Elimina filas vacías y normaliza columnas basándose en tu estructura.
+    """
+    xl = pd.ExcelFile(file_path)
+    hojas = {h.lower().strip(): h for h in xl.sheet_names}
+```
+
+<CardGroup cols={3}>
+  <Card title="Hoja de Entrantes" icon="arrow-down">
+    Detectada si el nombre contiene `entrant` o `incoming`. Se le asigna automáticamente `tipo_llamada = "entrante"`.
+  </Card>
+  <Card title="Hoja de Salientes" icon="arrow-up">
+    Detectada si el nombre contiene `salient` o `outgoing`. Se le asigna automáticamente `tipo_llamada = "saliente"`.
+  </Card>
+  <Card title="Hoja de Datos" icon="signal">
+    Detectada si el nombre contiene `dato`. Recibe tratamiento especial con mapeo de columnas para coordenadas GPS y tráfico de internet.
+  </Card>
+</CardGroup>
+
+### Mapeo de columnas para hoja DATOS
+
+La hoja de datos tiene una estructura diferente. El sistema aplica un mapa de renombrado explícito para estandarizar los nombres:
+
+```python
+rename_map = {
+    "numero":                      "originador",
+    "fecha_trafico":               "fecha_hora",
+    "tipo_cdr":                    "tipo_llamada",
+    "latitud":                     "latitud_n",        # coordenada GPS nativa
+    "longitud":                    "longitud_w",       # coordenada GPS nativa
+    "cell_identity_decimal":       "cell_identity_decimal",
+    "nombre_celda":                "nombre_celda",
+    "location_area_code_decimal":  "lac"
+}
+```
+
+El renombrado es insensible a mayúsculas y espacios: las columnas del archivo se normalizan con `.lower().strip()` antes de comparar.
+
+<Note>
+  Si el archivo no tiene hojas con nombres reconocibles, el sistema lee la primera hoja como genérica y asigna `tipo_llamada = "desconocido"` a todos los registros.
+</Note>
+
+---
+
+## Normalización de números telefónicos
+
+Todos los números en las columnas `originador` y `receptor` pasan por `normalizar_numero_colombia` en `phone_utils.py`. Esta función es tolerante a los formatos sucios que suelen aparecer en exportaciones de Excel:
+
+```python
+def normalizar_numero_colombia(numero):
+    # Extraer SOLO los dígitos — elimina: +57, espacios, comas, puntos, guiones
+    s = re.sub(r'\D', '', str(numero))
+    longitud = len(s)
+```
+
+<AccordionGroup>
+  <Accordion title="Caso A — 10 dígitos (formato correcto)">
+    Si el número ya tiene exactamente 10 dígitos, se retorna tal cual.
+
+    ```
+    "3001234567" → "3001234567"
+    ```
+  </Accordion>
+
+  <Accordion title="Caso B — Prefijo de país Colombia (+57)">
+    Si tiene 12 dígitos y empieza en `57`, se eliminan los dos primeros.
+
+    ```
+    "573001234567" → "3001234567"
+    ```
+  </Accordion>
+
+  <Accordion title="Caso C — Números internacionales largos">
+    Si tiene más de 10 dígitos, se toman los últimos 10, validando que comiencen por `3` (móvil) o `60` (fijo nacional). También detecta el prefijo `57` incrustado en el medio.
+
+    ```
+    "009573001234567" → "3001234567"
+    ```
+  </Accordion>
+
+  <Accordion title="Valores de basura comunes de Excel">
+    Los siguientes valores se retornan como `"Desconocido"` en lugar de fallar:
+
+    - Vacíos (`""`, `nan`, `None`)
+    - El texto literal `"Desconocido"` o `"?"`
+    - El dígito `"0"` suelto
+    - Números con formato decimal pegado (`"42452.23"`)
+  </Accordion>
+</AccordionGroup>
+
+Además, `phone_utils.py` expone funciones auxiliares usadas en el informe:
+
+| Función | Descripción |
+|---|---|
+| `validar_numero(numero, region="CO")` | Valida con la librería `phonenumbers` si el número es posible para la región |
+| `formatear_numero(numero)` | Da formato visual `+57 300 123 4567` para mostrar en reportes |
+| `detectar_region(numero)` | Devuelve el código ISO del país (ej: `"CO"`) |
+
+---
+
+## Limpieza de datos
+
+Una vez cargado el DataFrame crudo, `procesar_dataframe_con_mapeo` aplica limpieza profunda en varios pasos:
+
+<Steps>
+  <Step title="Eliminar columnas duplicadas">
+    Se ejecuta `df.loc[:, ~df.columns.duplicated()]` dos veces (antes y después del mapeo) para evitar el error `truth value of a Series is ambiguous`.
+  </Step>
+
+  <Step title="Garantizar columnas requeridas">
+    Si faltan las columnas `originador`, `receptor`, `fecha_hora` o `tipo_llamada`, se crean con valor `pd.NA` en lugar de fallar.
+  </Step>
+
+  <Step title="Normalizar números telefónicos">
+    Se aplica `normalizar_numero_colombia` a las columnas `originador` y `receptor`.
+  </Step>
+
+  <Step title="Parsear fechas con motor robusto">
+    Se aplica `robust_date_parser` a cada celda de la columna `fecha_hora`. Las filas donde la fecha resulte inválida se eliminan con `dropna(subset=["fecha_hora"])`.
+  </Step>
+
+  <Step title="Corregir coordenadas">
+    Las columnas `latitud_n` y `longitud_w` pasan por la función interna `corregir_coordenadas`, que reemplaza comas por puntos y corrige coordenadas absurdas (ej: `7375060` → `7.375060`).
+  </Step>
+
+  <Step title="Normalizar duración">
+    La columna `duracion` se convierte a entero. Los nulos se rellenan con `0`.
+  </Step>
+</Steps>
+
+### Formatos de fecha soportados
+
+El motor `robust_date_parser` intenta reconocer 6 formatos de texto, más el formato serial numérico de Excel:
+
+```python
+formatos = [
+    "%Y/%m/%d %H:%M:%S",   # 2025/10/08 12:04:47
+    "%Y/%m/%d %H:%M",      # 2025/10/08 12:04
+    "%d/%m/%Y %H:%M:%S",   # 08/10/2025 12:04:47
+    "%d-%m-%Y %H:%M:%S",   # 08-10-2025 12:04:47
+    "%Y-%m-%d %H:%M:%S",   # 2025-10-08 12:04:47
+    "%Y%m%d %H%M%S"        # 20251008 120447
+]
+```
+
+Además, si el valor es un número entero o decimal en el rango `32874–51138`, se interpreta como un serial de fecha de Excel (días desde el 30/12/1899):
+
+```python
+if 32874 < num_val < 51138:
+    return pd.to_datetime(num_val, unit='D', origin='1899-12-30').round('S')
+```
+
+Como último recurso, se intenta `pd.to_datetime(value_str, errors='coerce', dayfirst=False)`.
+
+---
+
+## Columnas estándar resultantes
+
+Tras el procesamiento, el DataFrame tiene las siguientes columnas internas. Todas las funciones posteriores (geocodificación, mapas, gráficos) dependen de estos nombres exactos:
+
+| Columna | Tipo | Descripción |
+|---|---|---|
+| `originador` | `str` | Número que origina la comunicación (10 dígitos) |
+| `receptor` | `str` | Número que recibe la comunicación (10 dígitos) |
+| `fecha_hora` | `datetime64` | Marca de tiempo del evento |
+| `tipo_llamada` | `str` | `entrante`, `saliente`, `DATOS` o `desconocido` |
+| `duracion` | `int` | Duración en segundos (0 si no aplica) |
+| `latitud_n` | `float` | Latitud GPS (puede ser `NaN` si no hay coordenada) |
+| `longitud_w` | `float` | Longitud GPS (puede ser `NaN` si no hay coordenada) |
+| `nombre_celda` | `str` | Nombre de la antena/celda BTS (ej: `ANT.MEDELLIN-2_R1`) |
+| `cell_identity_decimal` | `str` | ID numérico decimal de la celda |
+| `lac` | `str` | Location Area Code decimal |
+
+---
+
+## Filtrado de datos
+
+El sistema separa los registros en dos grupos lógicos antes de generar el informe. Esta separación es crítica porque los datos de internet (DATOS) no tienen interlocutor telefónico y no deben mezclarse con las estadísticas de llamadas.
+
+```python
+# En report_generator.py
+mask_datos = df['tipo_llamada'].astype(str).str.upper().str.contains('DATO')
+
+df_datos    = df[mask_datos].copy()    # Solo tráfico de internet
+df_llamadas = df[~mask_datos].copy()  # Solo llamadas entrantes/salientes
+```
+
+<Tabs>
+  <Tab title="df_llamadas">
+    Usado para:
+    - Estadísticas (top contactos, frecuencia horaria)
+    - Tabla de llamadas entrantes y salientes
+    - Mapas de clusters y mapa de calor
+    - Cálculo de números únicos y promedio de llamadas
+    - El archivo `call_data.js` para gráficos interactivos
+  </Tab>
+  <Tab title="df_datos">
+    Usado para:
+    - Mapa de recorrido cronológico (Plotly animado)
+    - Visualización de antenas de internet visitadas
+    - Solo se genera si `df_datos` no está vacío
+  </Tab>
+</Tabs>
+
+<Warning>
+  Si todas las fechas del archivo resultan inválidas tras el parseo, el DataFrame quedará vacío y el sistema imprimirá `❌ Error: Todas las fechas fueron inválidas`. Verifique que el archivo tenga fechas en uno de los 6 formatos soportados.
+</Warning>

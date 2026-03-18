@@ -1,0 +1,91 @@
+---
+title: "Mapeo de columnas"
+description: "Cómo usar el diálogo de mapeo de columnas para relacionar las columnas de tu Excel con los campos internos del sistema."
+---
+
+Cada operador de telefonía genera archivos CDR con nombres de columnas propios. El diálogo **🔗 Mapeo de Columnas** aparece automáticamente después de cargar un archivo y permite relacionar las columnas presentes en el Excel con los campos que el sistema necesita para procesar y analizar los datos.
+
+## El diálogo de mapeo
+
+El diálogo `ColumnMapperDialog` se abre en una ventana modal (bloquea la ventana principal hasta que se confirme o cancele). Muestra los siete campos del sistema en la columna izquierda, y un desplegable (`Combobox`) de solo lectura en la columna derecha con todas las columnas detectadas en el archivo.
+
+### Campos del sistema
+
+| Campo interno | Nombre mostrado en el diálogo | Obligatorio |
+|---|---|---|
+| `originador` | Número Origen | Sí |
+| `receptor` | Número Destino | Sí |
+| `fecha_hora` | Fecha y Hora | Sí |
+| `duracion` | Duración (seg) | No |
+| `nombre_celda` | Nombre Celda/Antena (Opcional para Mapa) | No |
+| `latitud_n` | Latitud (Decimal - Opcional) | No |
+| `longitud_w` | Longitud (Decimal - Opcional) | No |
+
+<Warning>
+  Los campos **Número Origen**, **Número Destino** y **Fecha y Hora** son obligatorios. Si alguno de los tres se deja en `(No existe / Omitir)`, el botón "Confirmar y Cargar" mostrará un error y no permitirá continuar.
+</Warning>
+
+## Auto-selección inteligente
+
+El diálogo intenta hacer una preselección automática comparando el nombre interno del campo con los nombres de columna del archivo:
+
+- Para `nombre_celda`: busca columnas que contengan `celda`, `site`, `bts`, `nom` o `ant`.
+- Para los demás campos: busca que el prefijo del nombre interno (`latitud`, `longitud`, `receptor`, etc.) esté contenido en el nombre de la columna del Excel.
+
+Si no encuentra una coincidencia, el desplegable queda en `(No existe / Omitir)` y el usuario debe seleccionar manualmente.
+
+## Cómo asignar columnas
+
+<Steps>
+  <Step title="Revisar la preselección">
+    Al abrirse el diálogo, revisa los desplegables. Los campos que el sistema pudo identificar automáticamente ya tendrán una columna preseleccionada. Verifica que la correspondencia sea correcta.
+  </Step>
+  <Step title="Corregir asignaciones incorrectas">
+    Si un campo tiene una columna incorrecta o quedó en `(No existe / Omitir)`, haz clic en el desplegable correspondiente y selecciona la columna correcta de la lista.
+
+    Ejemplo: si tu Excel llama `NUMERO_A` al número de origen, selecciona `NUMERO_A` en el desplegable de **Número Origen**.
+  </Step>
+  <Step title="Omitir columnas opcionales">
+    Para los campos opcionales (`Duración`, `Nombre Celda/Antena`, `Latitud`, `Longitud`), si tu archivo no contiene esa información, deja el desplegable en `(No existe / Omitir)`. El sistema asignará valores por defecto (duración = 0, sin coordenadas).
+  </Step>
+  <Step title="Confirmar el mapeo">
+    Haz clic en **✅ Confirmar y Cargar**. El sistema validará que los tres campos obligatorios estén asignados y cerrará el diálogo para continuar con la limpieza de datos.
+
+    Para cancelar toda la carga, cierra la ventana con la **X**. El semáforo volverá al estado gris ("Carga Cancelada").
+  </Step>
+</Steps>
+
+## Columnas no mapeadas
+
+Las columnas del Excel que no sean asignadas a ningún campo del sistema no se eliminan, sino que permanecen en el DataFrame interno con sus nombres originales (en minúsculas). Sin embargo, el sistema de análisis, gráficos e informes solo utiliza los campos internos mapeados. Las columnas extra no afectan el procesamiento.
+
+<Note>
+  Si tu Excel de llamadas tiene columnas con coordenadas GPS (`latitud_n` / `longitud_w`), asignarlas permite que el sistema genere los tres mapas interactivos (agrupado, calor y recorrido) en el informe final. Sin ellas, los mapas no se generan aunque el informe sigue siendo válido.
+</Note>
+
+## Ejemplo de mapeo típico
+
+<Tabs>
+  <Tab title="Operador A">
+    | Campo del sistema | Columna en el Excel |
+    |---|---|
+    | Número Origen | `NUMERO_MARCADO` |
+    | Número Destino | `NUMERO_RECEPTOR` |
+    | Fecha y Hora | `FECHA_INICIO` |
+    | Duración (seg) | `DURACION_SEG` |
+    | Nombre Celda/Antena | `SITE_NAME` |
+    | Latitud | `LAT` |
+    | Longitud | `LON` |
+  </Tab>
+  <Tab title="Operador B">
+    | Campo del sistema | Columna en el Excel |
+    |---|---|
+    | Número Origen | `origen` |
+    | Número Destino | `destino` |
+    | Fecha y Hora | `fecha_trafico` |
+    | Duración (seg) | `(No existe / Omitir)` |
+    | Nombre Celda/Antena | `nombre_celda` |
+    | Latitud | `latitud` |
+    | Longitud | `longitud` |
+  </Tab>
+</Tabs>

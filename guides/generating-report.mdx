@@ -1,0 +1,152 @@
+---
+title: "Generar y exportar el informe"
+description: "Cómo configurar las opciones de exportación y generar el informe HTML interactivo del análisis forense."
+---
+
+Una vez cargada la sábana, mapeadas las columnas y enriquecidos los datos, el paso final es generar el informe. La sección **🚀 Generar** de la ventana principal concentra todas las opciones de exportación.
+
+## Opciones de exportación
+
+### Nombre de carpeta de salida
+
+El campo **Nombre Carpeta** define el nombre de la carpeta donde se guardarán todos los archivos del informe. El valor por defecto es `Informe_Llamadas`.
+
+```
+output/
+└── Informe_Llamadas/      ← carpeta con el nombre que configures aquí
+    ├── reports/
+    ├── maps/
+    ├── graphics/
+    ├── data/
+    └── static/
+```
+
+Los espacios en el nombre se reemplazan automáticamente por guiones bajos (`_`). Puedes usar nombres descriptivos como `Caso_Garcia_2025` o `Radicado_000123`.
+
+### Incluir Membretes
+
+El checkbox **Incluir Membretes** controla si el logo corporativo (`static/assets_img/logo.png`) se incluye en el encabezado del informe HTML. Está marcado por defecto.
+
+- **Marcado**: el informe incluye el logo de Coyprot en el encabezado de la página.
+- **Desmarcado**: el informe se genera sin logo, útil para informes de trabajo interno.
+
+### Subir a FTP
+
+El checkbox **Subir a FTP** activa la subida automática del informe completo al servidor FTP configurado al finalizar la generación local.
+
+<Note>
+  El servidor FTP está preconfigurado en la aplicación (`plcoyprot.com`). La conexión usa **FTP sobre TLS** (puerto 21) y sube el contenido completo de la carpeta del informe al directorio `public_html/<nombre_carpeta>/`.
+</Note>
+
+Si la subida es exitosa, aparece una ventana con la URL pública del informe en formato:
+
+```
+https://plcoyprot.com/<nombre_carpeta>/reports/informe_llamadas.html
+```
+
+Esa URL puede copiarse directamente desde la ventana para compartirla.
+
+<Warning>
+  La subida FTP requiere conexión a internet y acceso al servidor. Si la conexión falla, se registra el error en el panel de actividad y el informe queda disponible localmente en la carpeta `output/`.
+</Warning>
+
+## Generar el informe
+
+<Steps>
+  <Step title="Configurar las opciones">
+    Escribe el nombre de carpeta deseado, y marca o desmarca **Incluir Membretes** y **Subir a FTP** según necesites.
+  </Step>
+  <Step title="Hacer clic en 💾 Generar y Exportar Informe">
+    Haz clic en el botón **💾 Generar y Exportar Informe**. El botón cambia su texto a **⚙️ Trabajando...** y el semáforo pasa a amarillo ("Generando Informe...") mientras el proceso corre en segundo plano.
+  </Step>
+  <Step title="Esperar la generación">
+    El sistema ejecuta en orden:
+
+    1. Renderizado del template HTML con todos los datos
+    2. Generación del archivo `data/call_data.js` con los datos JSON para los gráficos interactivos
+    3. Generación de gráficos estáticos PNG (Top llamadas, Top ubicación, Horario)
+    4. Generación de mapas interactivos HTML (si hay coordenadas disponibles)
+    5. Copia de PDFs adjuntos al directorio `data/`
+    6. Subida FTP (si está activada)
+  </Step>
+  <Step title="Abrir el informe">
+    Al completarse la generación local, aparece un diálogo:
+
+    ```
+    Guardado en: C:\...\output\Informe_Llamadas\reports\informe_llamadas.html
+    ¿Abrir?
+    ```
+
+    Haz clic en **Sí** para abrir el informe directamente en el navegador predeterminado.
+  </Step>
+</Steps>
+
+## Contenido del informe HTML
+
+El informe generado es un archivo HTML con todos los recursos estáticos incluidos, organizado en pestañas interactivas:
+
+<CardGroup cols={2}>
+  <Card title="Resumen del caso" icon="chart-bar">
+    Estadísticas generales: total de registros, números únicos, promedio de llamadas. Incluye los datos del caso (Cliente, Ciudad, Radicado, etc.) y el Top 5 de entrantes y salientes.
+  </Card>
+  <Card title="Tablas de llamadas" icon="table">
+    Tablas detalladas de llamadas entrantes y salientes con fecha, duración, coordenadas, departamento y municipio. Filtros en cascada por departamento y municipio.
+  </Card>
+  <Card title="Gráficos interactivos" icon="chart-line">
+    Dashboard con gráfico de tendencias horarias animado (Entrantes vs Salientes), gráficos de barras Top 10 y gráficos de ubicación cruzando números frecuentes con su celda de origen.
+  </Card>
+  <Card title="Mapas interactivos" icon="map">
+    Tres mapas Folium incrustados: **Mapa Agrupado** (clusters de marcadores), **Mapa de Calor** (densidad de actividad) y **Recorrido Cronológico** (rutas de datos de internet, si aplica).
+  </Card>
+  <Card title="Documentos adjuntos" icon="file-text">
+    Los PDFs adjuntos se muestran como pestañas separadas agrupadas por categoría (Financiero, Propiedades, Vehículos, Judicial, Antecedentes, Otros), con un visualizador integrado en el navegador.
+  </Card>
+  <Card title="Datos de internet" icon="wifi">
+    Si la sábana incluía registros de tipo DATOS, esta sección muestra el tráfico de internet del objetivo separado de las llamadas, incluyendo su mapa de recorrido geográfico.
+  </Card>
+</CardGroup>
+
+## Estructura de archivos de salida
+
+Todos los informes se guardan bajo la carpeta `output/` en el directorio raíz de la aplicación:
+
+```
+output/
+└── <nombre_carpeta>/
+    ├── reports/
+    │   └── informe_llamadas.html   ← archivo principal del informe
+    ├── maps/
+    │   ├── mapa_agrupado.html
+    │   ├── mapa_calor.html
+    │   └── mapa_recorrido.html     ← solo si hay datos de internet con coords
+    ├── graphics/
+    │   ├── top_llamadas_recibidas.png
+    │   ├── top_llamadas_realizadas.png
+    │   ├── top_ubicacion_recibidas.png
+    │   ├── top_ubicacion_realizadas.png
+    │   └── grafico_horario_llamadas.png
+    ├── data/
+    │   ├── call_data.js            ← datos JSON para gráficos interactivos
+    │   └── *.pdf                   ← PDFs adjuntos copiados aquí
+    └── static/
+        ├── assets_js/
+        │   ├── interactive_maps.js
+        │   └── interactive_charts.js
+        └── assets_img/
+            └── logo.png            ← solo si "Incluir Membretes" está activo
+```
+
+## Compartir el informe
+
+<Tabs>
+  <Tab title="Compartir localmente">
+    Comprime la carpeta completa `<nombre_carpeta>/` en un archivo ZIP y envíala al destinatario. El receptor solo necesita descomprimir y abrir `reports/informe_llamadas.html` en cualquier navegador moderno. No requiere conexión a internet.
+  </Tab>
+  <Tab title="Compartir por FTP">
+    Activa el checkbox **Subir a FTP** antes de generar. Al completarse la subida, copia la URL que aparece en la ventana de confirmación y compártela directamente. El informe estará disponible en la web sin necesidad de compartir archivos.
+  </Tab>
+</Tabs>
+
+<Tip>
+  Para informes que se compartirán con fiscales u otras entidades judiciales, usa la opción FTP para garantizar que el enlace sea estable y accesible desde cualquier dispositivo, incluyendo móviles.
+</Tip>

@@ -1,0 +1,106 @@
+---
+title: "Introducción"
+description: "Herramienta avanzada para el análisis forense de registros de detalles de llamadas (CDR), geolocalización multinivel y generación de informes HTML interactivos."
+---
+
+**Analizador de Llamadas Pro** es una aplicación de escritorio desarrollada en Python para el análisis forense de sábanas de llamadas (CDR). Procesa archivos Excel y CSV, normaliza y enriquece los datos telefónicos, geolocaliza las antenas que intervinieron en cada llamada y produce un informe HTML interactivo autocontenido listo para presentar en investigaciones.
+
+El sistema fue desarrollado para **Coyprot** y está orientado a unidades de inteligencia, analistas de seguridad e investigadores que necesitan transformar grandes volúmenes de registros telefónicos en evidencia visual procesable.
+
+---
+
+## Capacidades principales
+
+<CardGroup cols={2}>
+  <Card title="Procesamiento de CDR" icon="table">
+    Carga sábanas en formato Excel (`.xlsx`, `.xls`) o CSV. Un asistente gráfico permite mapear columnas de cualquier formato al esquema interno del sistema.
+  </Card>
+  <Card title="Geolocalización multinivel" icon="map-pin">
+    Tres estrategias de geocodificación en cascada: coordenadas GPS nativas, cruce con la base de datos de celdas `celdas.csv`, e inferencia automática por nombre de municipio.
+  </Card>
+  <Card title="Dashboard interactivo" icon="chart-line">
+    Gráficos de tendencia horaria (entrantes vs. salientes), top 10 de números frecuentes y visualización de ubicación geográfica de los contactos más activos.
+  </Card>
+  <Card title="Mapas interactivos" icon="map">
+    Genera tres tipos de mapas Folium embebidos en el informe: mapa agrupado (clusters), rutas cronológicas numeradas y mapa de calor por densidad de actividad.
+  </Card>
+  <Card title="Gestión documental" icon="file-text">
+    Adjunta múltiples PDFs categorizados (Financiero, Vehículos, Judicial, Antecedentes, etc.) con visualizador integrado en el informe final.
+  </Card>
+  <Card title="Exportación y distribución" icon="upload">
+    Genera un reporte HTML local portable con todos los recursos JS/CSS incluidos. Opcionalmente lo sube a un servidor FTP y devuelve una URL compartible.
+  </Card>
+</CardGroup>
+
+---
+
+## Geocodificación multinivel
+
+El sistema resuelve la ubicación de cada llamada siguiendo un orden de prioridad:
+
+| Nivel | Nombre | Descripción |
+|-------|--------|-------------|
+| Plan A | GPS nativo | Usa las columnas de latitud y longitud si ya vienen en el archivo CDR |
+| Plan B | Base de datos de celdas | Cruza el campo `nombre_celda` contra `static/db/celdas.csv` para obtener coordenadas exactas de la antena |
+| Plan C | Inferencia por municipio | Detecta patrones de texto en el nombre de la celda (ej: `ANT.BARBOSA-2_R1`) e infiere las coordenadas del centroide del municipio, previa confirmación del usuario |
+
+---
+
+## Arquitectura del sistema
+
+La aplicación puede ejecutarse en dos modos:
+
+<Tabs>
+  <Tab title="Interfaz gráfica (GUI)">
+    Modo recomendado. Lanza una ventana Tkinter con tema `adapta` que expone todas las funciones: carga de archivos, mapeo de columnas, asignación de alias, datos del caso, adjuntos PDF y generación del informe.
+
+    ```bash
+    python run.py
+    ```
+  </Tab>
+  <Tab title="Línea de comandos (CLI)">
+    Modo para ejecuciones automatizadas o integración en scripts. Accede directamente al punto de entrada en `src/main.py`.
+
+    ```bash
+    python src/main.py
+    ```
+  </Tab>
+</Tabs>
+
+### Módulos principales
+
+```
+src/
+├── ui/app.py               # Interfaz gráfica principal (Tkinter + ThemedTk)
+├── excel_utils.py          # Lectura y limpieza de archivos Excel/CSV
+├── phone_utils.py          # Normalización de números telefónicos
+├── cell_geocoder.py        # Geolocalización por base de datos de celdas
+├── colombia_data.py        # Inferencia de coordenadas por nombre de municipio
+├── geo_utils.py            # Generación de mapas Folium
+├── graphics_utils.py       # Gráficos estadísticos con Matplotlib/Seaborn
+├── report_generator.py     # Orquestador del informe HTML (Jinja2)
+├── ftp_utils.py            # Subida de reportes a servidor FTP
+└── config/settings.py      # Configuración centralizada desde variables de entorno
+```
+
+---
+
+## Para quién es esta herramienta
+
+- **Investigadores forenses** que reciben sábanas de llamadas de operadores móviles y necesitan analizarlas visualmente.
+- **Analistas de inteligencia** que deben cruzar información telefónica con ubicación geográfica de antenas.
+- **Unidades de seguridad** que elaboran informes estructurados para procesos judiciales o administrativos.
+
+<Note>
+  La herramienta trabaja exclusivamente con datos locales. Ningún registro CDR es enviado a servidores externos, salvo que el usuario active explícitamente la opción de subida FTP.
+</Note>
+
+---
+
+## Siguiente paso
+
+Sigue la guía de inicio rápido para tener el sistema funcionando en minutos.
+
+<Card title="Inicio Rápido" icon="rocket" href="/quickstart">
+  Instala las dependencias y genera tu primer informe en pocos pasos.
+</Card>
