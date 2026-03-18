@@ -9,13 +9,29 @@ Una vez generado el informe HTML, la herramienta puede subir automáticamente to
 
 ## Configuración FTP
 
-Las credenciales y parámetros del servidor están definidos como constantes en `gui.py`:
+Las credenciales se configuran mediante variables de entorno en el archivo `.env` de la raíz del proyecto. La clase `Settings` en `src/config/settings.py` las carga al iniciar:
 
 ```python
-# gui.py
-FTP_HOST = "plcoyprot.com"
-FTP_USER = "plcoypro"
-FTP_PASS = "181955Danilo?"
+# src/config/settings.py
+class Settings:
+    ftp_host:        str = os.environ.get("FTP_HOST", "")
+    ftp_user:        str = os.environ.get("FTP_USER", "")
+    ftp_pass:        str = os.environ.get("FTP_PASS", "")
+    ftp_public_html: str = os.environ.get("FTP_PUBLIC_HTML", "public_html")
+
+    @classmethod
+    def ftp_configured(cls) -> bool:
+        """Devuelve True si las credenciales FTP están configuradas."""
+        return bool(cls.ftp_host and cls.ftp_user and cls.ftp_pass)
+```
+
+Copia `.env.example` a `.env` y completa los valores:
+
+```bash
+FTP_HOST=tu_dominio.com
+FTP_USER=tu_usuario_ftp
+FTP_PASS=tu_contraseña_ftp
+FTP_PUBLIC_HTML=public_html
 ```
 
 La conexión siempre se realiza al **puerto 21** (FTP estándar), con TLS activado mediante `FTP_TLS.prot_p()`:
@@ -31,7 +47,7 @@ def subir_archivo_ftp(ftp_host, ftp_user, ftp_pass, carpeta_local, carpeta_remot
 ```
 
 <Warning>
-  Las credenciales FTP están embebidas en el código fuente. No comparta el ejecutable de la herramienta con personas no autorizadas. Esta configuración está diseñada para uso interno del equipo Coyprot.
+  Nunca versiones el archivo `.env` con credenciales reales. Asegúrate de que `.env` esté en tu `.gitignore`. Las credenciales no deben quedar en el código fuente ni compartirse fuera del equipo autorizado.
 </Warning>
 
 ---
@@ -42,7 +58,7 @@ La función `subir_archivo_ftp` sube recursivamente el directorio completo del i
 
 <Steps>
   <Step title="Conexión TLS">
-    Se establece conexión al host `plcoyprot.com:21` con `FTP_TLS` y se activa el cifrado del canal de datos con `prot_p()`.
+    Se establece conexión al host definido en `FTP_HOST` (puerto 21) con `FTP_TLS` y se activa el cifrado del canal de datos con `prot_p()`.
   </Step>
 
   <Step title="Navegación al directorio raíz">
@@ -105,18 +121,17 @@ public_html/<nombre_informe>/
 
 ## URL generada
 
-Tras una subida exitosa, la herramienta construye y muestra la URL pública del informe:
+Tras una subida exitosa, la herramienta construye y muestra la URL pública del informe usando el host configurado en `.env`:
 
 ```python
-# gui.py — tras subida exitosa
-url = f"https://{FTP_HOST}/{name}/reports/informe_llamadas.html"
-# Resultado: https://plcoyprot.com/<nombre_informe>/reports/informe_llamadas.html
+# tras subida exitosa
+url = f"https://{ftp_host}/{nombre_informe}/reports/informe_llamadas.html"
 ```
 
-Ejemplo con un informe llamado `caso_2025_001`:
+Ejemplo con `FTP_HOST=informes.miempresa.com` y un informe llamado `caso_2025_001`:
 
 ```
-https://plcoyprot.com/caso_2025_001/reports/informe_llamadas.html
+https://informes.miempresa.com/caso_2025_001/reports/informe_llamadas.html
 ```
 
 Esta URL se puede abrir directamente en cualquier navegador sin instalar la herramienta. El informe es completamente autocontenido: los mapas, gráficos y datos JavaScript se referencian con rutas relativas.
@@ -164,8 +179,8 @@ Si la subida falla (sin conexión, credenciales inválidas, etc.), se muestra un
     La conexión usa `FTP_TLS` de la librería estándar `ftplib`, que implementa FTPS explícito. El método `prot_p()` activa el cifrado TLS sobre el canal de datos (no solo el canal de control). Los archivos viajan cifrados entre la máquina local y el servidor.
   </Accordion>
 
-  <Accordion title="Credenciales embebidas">
-    Las credenciales (`FTP_HOST`, `FTP_USER`, `FTP_PASS`) están en texto plano en `gui.py`. Esto implica que cualquiera con acceso al código fuente o que descompile el ejecutable puede obtenerlas. El ejecutable no debe distribuirse fuera del equipo autorizado.
+  <Accordion title="Gestión de credenciales">
+    Las credenciales FTP se cargan exclusivamente desde variables de entorno (archivo `.env`), nunca desde el código fuente. Si `.env` no existe o las variables están vacías, `Settings.ftp_configured()` retorna `False` y la función de subida no se ejecuta. Mantén el archivo `.env` fuera del control de versiones (`.gitignore`).
   </Accordion>
 
   <Accordion title="Sobreescritura de informes">
@@ -173,6 +188,6 @@ Si la subida falla (sin conexión, credenciales inválidas, etc.), se muestra un
   </Accordion>
 
   <Accordion title="Acceso público a los informes">
-    Los informes subidos son **públicamente accesibles** mediante la URL generada — no hay autenticación web. No suba informes con información sensible a menos que se acepte este modelo de acceso. El servidor `plcoyprot.com` es de uso exclusivo del equipo Coyprot.
+    Los informes subidos son **públicamente accesibles** mediante la URL generada — no hay autenticación web en el nivel del informe. No suba informes con información sensible a menos que se acepte este modelo de acceso o se habilite autenticación a nivel del servidor web.
   </Accordion>
 </AccordionGroup>

@@ -35,13 +35,13 @@ El checkbox **Incluir Membretes** controla si el logo corporativo (`static/asset
 El checkbox **Subir a FTP** activa la subida automática del informe completo al servidor FTP configurado al finalizar la generación local.
 
 <Note>
-  El servidor FTP está preconfigurado en la aplicación (`plcoyprot.com`). La conexión usa **FTP sobre TLS** (puerto 21) y sube el contenido completo de la carpeta del informe al directorio `public_html/<nombre_carpeta>/`.
+  El servidor FTP se configura mediante las variables `FTP_HOST`, `FTP_USER`, `FTP_PASS` y `FTP_PUBLIC_HTML` en el archivo `.env`. La conexión usa **FTP sobre TLS** (puerto 21) y sube el contenido completo de la carpeta del informe al directorio `public_html/<nombre_carpeta>/`. Consulta la sección de [configuración](/reference/configuration) para los detalles.
 </Note>
 
 Si la subida es exitosa, aparece una ventana con la URL pública del informe en formato:
 
 ```
-https://plcoyprot.com/<nombre_carpeta>/reports/informe_llamadas.html
+https://<FTP_HOST>/<nombre_carpeta>/reports/informe_llamadas.html
 ```
 
 Esa URL puede copiarse directamente desde la ventana para compartirla.
